@@ -44,6 +44,9 @@ export class OpenAiReceiptExtractor implements ReceiptExtractor {
           ]
         }
       ]
+    }).catch((error: unknown) => {
+      logger.warn({ err: summarizeOpenAiError(error), receiptId: input.receiptId, model: config.aiModel }, "receipt extraction request failed");
+      throw openAiAppError(error);
     });
 
     const parsed = completion.choices[0]?.message.parsed;
@@ -63,6 +66,35 @@ export class OpenAiReceiptExtractor implements ReceiptExtractor {
       provider: "openai"
     };
   }
+}
+
+function openAiAppError(error: unknown): AppError {
+  if (error instanceof OpenAI.APIError) {
+    if (error.status === 401 || error.status === 403) {
+      return new AppError(503, "openai_auth_failed", "OpenAI atslēga nav derīga vai tai nav piekļuves izvēlētajam modelim.");
+    }
+    if (error.status === 429) {
+      return new AppError(429, "openai_rate_limited", "OpenAI pašlaik ierobežo pieprasījumus. Pamēģini vēlreiz pēc brīža.");
+    }
+    if (error.status === 400) {
+      return new AppError(502, "openai_bad_request", "AI nolasīšanas konfigurāciju neizdevās izpildīt. Pārbaudi modeli un mēģini vēlreiz.");
+    }
+    return new AppError(502, "openai_failed", "AI nolasīšana neizdevās. Pamēģini vēlreiz.");
+  }
+  return new AppError(502, "openai_failed", "AI nolasīšana neizdevās. Pamēģini vēlreiz.");
+}
+
+function summarizeOpenAiError(error: unknown) {
+  if (error instanceof OpenAI.APIError) {
+    return {
+      status: error.status,
+      code: error.code,
+      type: error.type,
+      request_id: error.requestID,
+      message: error.message
+    };
+  }
+  return error instanceof Error ? { name: error.name, message: error.message } : { message: "unknown error" };
 }
 
 function strictReceiptSystemPrompt(): string {

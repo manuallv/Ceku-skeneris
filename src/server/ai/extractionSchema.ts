@@ -9,6 +9,21 @@ const moneySchema = z.object({
   confidence: confidence.nullable()
 }).strict();
 
+const lineItemConfidenceSchema = z.object({
+  raw_line_text: confidence,
+  item_name: confidence,
+  normalized_name: confidence,
+  quantity: confidence,
+  unit: confidence,
+  unit_price: confidence,
+  discount_amount: confidence,
+  discount_percent: confidence,
+  vat_rate: confidence,
+  line_total: confidence,
+  item_code_barcode: confidence,
+  category: confidence
+}).strict();
+
 export const receiptExtractionSchema = z.object({
   merchant: z.object({
     merchant_display_name: z.string().nullable(),
@@ -51,7 +66,7 @@ export const receiptExtractionSchema = z.object({
     line_total: moneySchema,
     item_code_barcode: z.string().nullable(),
     category: z.string().nullable(),
-    confidence_per_field: z.record(z.string(), confidence),
+    confidence_per_field: lineItemConfidenceSchema,
     line_confidence: confidence,
     warnings: z.array(z.string())
   }).strict()),

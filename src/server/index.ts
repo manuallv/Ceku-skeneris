@@ -21,7 +21,20 @@ async function bootstrap(): Promise<void> {
   const app = express();
   app.set("trust proxy", 1);
   app.use(helmet({
-    contentSecurityPolicy: config.isProduction ? undefined : false,
+    contentSecurityPolicy: config.isProduction ? {
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        objectSrc: ["'none'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "blob:"],
+        mediaSrc: ["'self'", "blob:"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'", "data:"],
+        frameAncestors: ["'self'"]
+      }
+    } : false,
     crossOriginEmbedderPolicy: false
   }));
   app.use(cors({ origin: config.isProduction ? config.publicAppUrl : true, credentials: false }));

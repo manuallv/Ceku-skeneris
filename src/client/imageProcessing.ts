@@ -225,13 +225,140 @@ function estimateBlur(imageData: ImageData): number {
 }
 
 function enhanceImageData(imageData: ImageData): void {
-  const { data } = imageData;
-  const contrast = 1.18;
-  const brightness = 8;
-  for (let i = 0; i < data.length; i += 4) {
-    for (let channel = 0; channel < 3; channel += 1) {
-      data[i + channel] = clamp((data[i + channel] - 128) * contrast + 128 + brightness, 0, 255);
+  const { data, width, height } = imageData;
+  const pixels = width * height;
+  const gray = new Uint8ClampedArray(pixels);
+  for (let index = 0, pixel = 0; index < data.length; index += 4, pixel += 1) {
+    const luminance = data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114;
+    gray[pixel] = clamp((luminance - 128) * 1.22 + 138, 0, 255);
+  }
+
+  const integral = new Uint32Array((width + 1) * (height + 1));
+  for (let y = 1; y <= height; y += 1) {
+    let rowSum = 0;
+    for (let x = 1; x <= width; x += 1) {
+      rowSum += gray[(y - 1) * width + (x - 1)];
+      integral[y * (width + 1) + x] = integral[(y - 1) * (width + 1) + x] + rowSum;
     }
+  }
+
+  const radius = Math.max(18, Math.round(Math.min(width, height) / 42));
+  const globalThreshold = otsuThreshold(gray);
+  for (let y = 0; y < height; y += 1) {
+    const y0 = Math.max(0, y - radius);
+    const y1 = Math.min(height - 1, y + radius);
+    for (let x = 0; x < width; x += 1) {
+      const x0 = Math.max(0, x - radius);
+      const x1 = Math.min(width - 1, x + radius);
+      const area = (x1 - x0 + 1) * (y1 - y0 + 1);
+      const sum = rectangleSum(integral, width + 1, x0, y0, x1, y1);
+      const localMean = sum / area;
+      const threshold = clamp(Math.min(localMean - 9, globalThreshold + 28), 64, 218);
+      const value = gray[y * width + x] < threshold ? 0 : 255;
+      const index = (y * width + x) * 4;
+      data[index] = value;
+      data[index + 1] = value;
+      data[index + 2] = value;
+      data[index + 3] = 255;
+    }
+  }
+
+  removeLargeBorderArtifacts(imageData);
+}
+
+function rectangleSum(integral: Uint32Array, stride: number, x0: number, y0: number, x1: number, y1: number): number {
+  const left = x0;
+  const top = y0;
+  const right = x1 + 1;
+  const bottom = y1 + 1;
+  return integral[bottom * stride + right] - integral[top * stride + right] - integral[bottom * stride + left] + integral[top * stride + left];
+}
+
+function otsuThreshold(gray: Uint8ClampedArray): number {
+  const histogram = new Uint32Array(256);
+  let sum = 0;
+  for (const value of gray) {
+    histogram[value] += 1;
+    sum += value;
+  }
+
+  let backgroundWeight = 0;
+  let backgroundSum = 0;
+  let bestVariance = -1;
+  let threshold = 160;
+  for (let value = 0; value < 256; value += 1) {
+    backgroundWeight += histogram[value];
+    if (backgroundWeight === 0) continue;
+    const foregroundWeight = gray.length - backgroundWeight;
+    if (foregroundWeight === 0) break;
+    backgroundSum += value * histogram[value];
+    const backgroundMean = backgroundSum / backgroundWeight;
+    const foregroundMean = (sum - backgroundSum) / foregroundWeight;
+    const betweenVariance = backgroundWeight * foregroundWeight * (backgroundMean - foregroundMean) ** 2;
+    if (betweenVariance > bestVariance) {
+      bestVariance = betweenVariance;
+      threshold = value;
+    }
+  }
+  return threshold;
+}
+
+function removeLargeBorderArtifacts(imageData: ImageData): void {
+  const { data, width, height } = imageData;
+  const pixels = width * height;
+  const visited = new Uint8Array(pixels);
+  const minBorderArtifactSize = Math.max(2200, Math.round(pixels * 0.0025));
+  const minInnerArtifactSize = Math.max(35000, Math.round(pixels * 0.025));
+
+  const isBlack = (pixel: number) => data[pixel * 4] === 0;
+  const whiten = (pixel: number) => {
+    const index = pixel * 4;
+    data[index] = 255;
+    data[index + 1] = 255;
+    data[index + 2] = 255;
+  };
+
+  const floodFrom = (start: number, minArtifactSize: number) => {
+    if (visited[start] || !isBlack(start)) return;
+    const stack = [start];
+    const component: number[] = [];
+    visited[start] = 1;
+
+    while (stack.length) {
+      const pixel = stack.pop();
+      if (pixel == null) break;
+      component.push(pixel);
+      const x = pixel % width;
+      const y = Math.floor(pixel / width);
+      const neighbors = [
+        x > 0 ? pixel - 1 : -1,
+        x < width - 1 ? pixel + 1 : -1,
+        y > 0 ? pixel - width : -1,
+        y < height - 1 ? pixel + width : -1
+      ];
+      for (const next of neighbors) {
+        if (next >= 0 && !visited[next] && isBlack(next)) {
+          visited[next] = 1;
+          stack.push(next);
+        }
+      }
+    }
+
+    if (component.length >= minArtifactSize) {
+      for (const pixel of component) whiten(pixel);
+    }
+  };
+
+  for (let x = 0; x < width; x += 1) {
+    floodFrom(x, minBorderArtifactSize);
+    floodFrom((height - 1) * width + x, minBorderArtifactSize);
+  }
+  for (let y = 0; y < height; y += 1) {
+    floodFrom(y * width, minBorderArtifactSize);
+    floodFrom(y * width + width - 1, minBorderArtifactSize);
+  }
+  for (let pixel = 0; pixel < pixels; pixel += 1) {
+    floodFrom(pixel, minInnerArtifactSize);
   }
 }
 

@@ -15,6 +15,21 @@ const money = (raw: string | null, cents: number | null, confidence = 0.95) => (
   confidence
 });
 
+const lineConfidence = (confidence = 0.94) => ({
+  raw_line_text: confidence,
+  item_name: confidence,
+  normalized_name: confidence,
+  quantity: confidence,
+  unit: confidence,
+  unit_price: confidence,
+  discount_amount: confidence,
+  discount_percent: confidence,
+  vat_rate: confidence,
+  line_total: confidence,
+  item_code_barcode: confidence,
+  category: confidence
+});
+
 export function validExtraction(overrides: DeepPartial<ReceiptExtraction> = {}): ReceiptExtraction {
   const base: ReceiptExtraction = {
     merchant: {
@@ -59,7 +74,7 @@ export function validExtraction(overrides: DeepPartial<ReceiptExtraction> = {}):
         line_total: money("1,20", 120),
         item_code_barcode: null,
         category: null,
-        confidence_per_field: { item_name: 0.94, line_total: 0.95 },
+        confidence_per_field: lineConfidence(),
         line_confidence: 0.94,
         warnings: []
       },
@@ -76,7 +91,7 @@ export function validExtraction(overrides: DeepPartial<ReceiptExtraction> = {}):
         line_total: money("2,10", 210),
         item_code_barcode: null,
         category: null,
-        confidence_per_field: { item_name: 0.94, line_total: 0.95 },
+        confidence_per_field: lineConfidence(),
         line_confidence: 0.94,
         warnings: []
       }

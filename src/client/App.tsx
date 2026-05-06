@@ -88,7 +88,7 @@ export default function App() {
       setProcessingStage(1);
       const detected = await detectReceipt(file);
       setDetection(detected);
-      setCorners(detected.corners.map((point) => pointToPercent(point, detected.imageWidth, detected.imageHeight)));
+      setCorners(insetInitialCorners(detected.corners.map((point) => pointToPercent(point, detected.imageWidth, detected.imageHeight))));
       setView("crop");
       void refreshReceipts();
     } catch (error) {
@@ -242,25 +242,47 @@ function ScannerScreen(props: { onClose: () => void; onCapture: (file: File) => 
   const [ready, setReady] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [error, setError] = useState("");
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [deviceId, setDeviceId] = useState("");
 
   useEffect(() => {
     let alive = true;
-    navigator.mediaDevices
-      ?.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 2560 } }, audio: false })
-      .then((stream) => {
+    const browserMediaDevices = (navigator as Navigator & { mediaDevices?: MediaDevices }).mediaDevices;
+
+    async function startCamera() {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      setReady(false);
+      setTorchOn(false);
+      setError("");
+      try {
+        const video: MediaTrackConstraints = {
+          width: { ideal: 1920 },
+          height: { ideal: 2560 },
+          ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: "environment" } })
+        };
+        const stream = await browserMediaDevices?.getUserMedia({ video, audio: false });
+        if (!stream) throw new Error("camera_unavailable");
         if (!alive) return;
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           setReady(true);
         }
-      })
-      .catch(() => setError("Kameru neizdevās atvērt. Izmanto galerijas augšupielādi."));
+        const available = await browserMediaDevices.enumerateDevices?.() ?? [];
+        if (alive) setDevices(available.filter((device) => device.kind === "videoinput"));
+      } catch {
+        if (alive) setError("Kameru neizdevās atvērt. Izmanto galerijas augšupielādi.");
+      }
+    }
+
+    void startCamera();
+
     return () => {
       alive = false;
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
-  }, []);
+  }, [deviceId]);
 
   async function toggleTorch() {
     const track = streamRef.current?.getVideoTracks()[0];
@@ -283,7 +305,22 @@ function ScannerScreen(props: { onClose: () => void; onCapture: (file: File) => 
       {error ? <div className="scanner-error">{error}</div> : null}
       <div className="scanner-top">
         <IconButton label="Aizvērt" icon={RotateCcw} onClick={props.onClose} />
-        <IconButton label="Zibspuldze" icon={Flashlight} onClick={toggleTorch} />
+        <div className="scanner-controls">
+          {devices.length > 1 ? (
+            <label className="camera-select">
+              <span>Kamera</span>
+              <select value={deviceId} onChange={(event) => setDeviceId(event.target.value)} aria-label="Izvēlēties kameru">
+                <option value="">Auto</option>
+                {devices.map((device, index) => (
+                  <option key={device.deviceId} value={device.deviceId}>
+                    {device.label || `Kamera ${index + 1}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <IconButton label="Zibspuldze" icon={Flashlight} onClick={toggleTorch} />
+        </div>
       </div>
       <div className="scanner-actions">
         <Button variant="secondary" icon={Upload} onClick={props.onUpload}>Galerija</Button>
@@ -304,16 +341,43 @@ function CropScreen(props: {
   onContinue: () => void;
 }) {
   const imageRef = useRef<HTMLImageElement | null>(null);
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragState, setDragState] = useState<{ index: number; offset: Point } | null>(null);
+  const [selectedCorner, setSelectedCorner] = useState<number | null>(null);
   const warnings = props.detection.quality.warnings;
 
-  function updateCorner(event: React.PointerEvent, index: number) {
+  function pointerToPercent(event: React.PointerEvent): Point | null {
     const rect = imageRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const next = [...props.corners];
-    next[index] = {
+    if (!rect) return null;
+    return {
       x: clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100),
       y: clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100)
+    };
+  }
+
+  function beginCornerDrag(event: React.PointerEvent) {
+    const pointer = pointerToPercent(event);
+    if (!pointer) return;
+    const index = nearestCornerIndex(pointer, props.corners);
+    const corner = props.corners[index];
+    setSelectedCorner(index);
+    setDragState({
+      index,
+      offset: {
+        x: corner.x - pointer.x,
+        y: corner.y - pointer.y
+      }
+    });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function updateCorner(event: React.PointerEvent) {
+    if (!dragState) return;
+    const pointer = pointerToPercent(event);
+    if (!pointer) return;
+    const next = [...props.corners];
+    next[dragState.index] = {
+      x: clamp(pointer.x + dragState.offset.x, 0, 100),
+      y: clamp(pointer.y + dragState.offset.y, 0, 100)
     };
     props.setCorners(next);
   }
@@ -326,27 +390,18 @@ function CropScreen(props: {
       </header>
       {warnings.length ? <WarningBanner>{warnings.join(" ")}</WarningBanner> : null}
       <div className="crop-layout">
-        <div className="crop-canvas">
+        <div className="crop-canvas" onPointerDown={beginCornerDrag} onPointerMove={updateCorner} onPointerUp={() => setDragState(null)} onPointerCancel={() => setDragState(null)}>
           <img ref={imageRef} src={props.imageUrl} alt="Uzņemtais čeks" />
           <svg className="crop-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
             <polygon points={props.corners.map((point) => `${point.x},${point.y}`).join(" ")} />
           </svg>
           {props.corners.map((point, index) => (
             <button
-              className="corner-handle"
+              className={`corner-handle ${selectedCorner === index ? "active" : ""}`}
               key={index}
               style={{ left: `${point.x}%`, top: `${point.y}%` }}
               type="button"
               aria-label={`Stūris ${index + 1}`}
-              onPointerDown={(event) => {
-                setDragIndex(index);
-                updateCorner(event, index);
-                event.currentTarget.setPointerCapture(event.pointerId);
-              }}
-              onPointerMove={(event) => {
-                if (dragIndex === index) updateCorner(event, index);
-              }}
-              onPointerUp={() => setDragIndex(null)}
             />
           ))}
         </div>
@@ -628,4 +683,26 @@ function normalizeDateInput(value: string | null): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function nearestCornerIndex(pointer: Point, corners: Point[]): number {
+  let nearest = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  corners.forEach((corner, index) => {
+    const distance = Math.hypot(corner.x - pointer.x, corner.y - pointer.y);
+    if (distance < nearestDistance) {
+      nearest = index;
+      nearestDistance = distance;
+    }
+  });
+  return nearest;
+}
+
+function insetInitialCorners(corners: Point[]): Point[] {
+  const min = 7;
+  const max = 93;
+  return corners.map((point) => ({
+    x: clamp(point.x, min, max),
+    y: clamp(point.y, min, max)
+  }));
 }
