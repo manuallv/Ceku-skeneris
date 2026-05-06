@@ -1,20 +1,7 @@
 import type { ImageQualityReport, ReceiptExtraction, ReceiptRecord } from "../shared/receiptTypes";
 
-const TOKEN_KEY = "ceku-skeneris-access-token";
-
-export function getAccessToken(): string {
-  return localStorage.getItem(TOKEN_KEY) ?? "";
-}
-
-export function setAccessToken(token: string): void {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
-}
-
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  const token = getAccessToken();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
@@ -60,8 +47,5 @@ export const api = {
 };
 
 export function fileUrl(receiptId: string, fileId: string): string {
-  const token = getAccessToken();
-  const url = new URL(`/files/${receiptId}/${fileId}`, window.location.origin);
-  if (token) url.searchParams.set("access_token", token);
-  return url.toString();
+  return new URL(`/files/${receiptId}/${fileId}`, window.location.origin).toString();
 }

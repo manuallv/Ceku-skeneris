@@ -18,8 +18,6 @@ export const config = {
   isProduction: process.env.NODE_ENV === "production",
   port: toNumber(process.env.PORT, 3000),
   publicAppUrl: process.env.PUBLIC_APP_URL ?? "http://localhost:5173",
-  appAccessToken: process.env.APP_ACCESS_TOKEN ?? "",
-  sessionSecret: process.env.SESSION_SECRET ?? "",
   maxUploadBytes: toNumber(process.env.MAX_UPLOAD_BYTES, 10 * 1024 * 1024),
   localStorageDir: path.resolve(process.cwd(), process.env.LOCAL_STORAGE_DIR ?? "storage"),
   databaseUrl: process.env.DATABASE_URL ?? "",

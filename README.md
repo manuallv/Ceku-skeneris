@@ -43,8 +43,6 @@ See [.env.example](./.env.example).
 Required for production:
 
 - `PORT`: Hostinger-provided or configured app port
-- `APP_ACCESS_TOKEN`: temporary protected-mode access token if no real auth exists yet
-- `SESSION_SECRET`: long random value for future session use
 - `OPENAI_API_KEY`: backend-only OpenAI key
 - `AI_MODEL`: image-capable model name; configurable for future replacement
 - `DATABASE_URL` or `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
@@ -161,7 +159,7 @@ Stored files include:
 - generated PDF
 - optional raw AI JSON
 
-Every stored file gets MIME type, byte size, safe filename, dimensions when available, and SHA-256 hash. `/files/:receiptId/:fileId` serves files through the backend route, protected by `APP_ACCESS_TOKEN` when configured.
+Every stored file gets MIME type, byte size, safe filename, dimensions when available, and SHA-256 hash. `/files/:receiptId/:fileId` serves files through the backend route by receipt/file IDs. Real access control is intentionally postponed until the user and role system is added.
 
 ## AI Extraction
 
@@ -186,7 +184,7 @@ The UI is iPhone-first and Latvian by default. It is inspired by Apple Human Int
 - Upload MIME validation
 - Upload size limit
 - Backend-only AI and DB access
-- Access token protected mode when no auth exists
+- Rate limiting for upload and API endpoints
 - Safe error messages
 - Secret redaction in logs
 - Path traversal prevention
@@ -200,7 +198,7 @@ The UI is iPhone-first and Latvian by default. It is inspired by Apple Human Int
 - Local dev repository is JSON-file based and exists only to run the app before DB credentials are available.
 - Browser-side document detection uses a lightweight Canvas heuristic to avoid native dependencies on shared hosting. It includes manual corner correction when confidence is low.
 - HEIC upload is not accepted yet; iPhone camera capture through the browser normally produces JPEG.
-- Real auth is not implemented yet; protected mode uses `APP_ACCESS_TOKEN`.
+- Real auth is intentionally not implemented yet; add users, roles, and file access control before opening this to untrusted public traffic.
 
 ## Manual QA
 

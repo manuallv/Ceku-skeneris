@@ -290,14 +290,6 @@ video {
   border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--line));
 }
 
-.protected-entry {
-  display: grid;
-  gap: var(--space-3);
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--line);
-  text-align: left;
-}
-
 .scanner-screen {
   position: fixed;
   inset: 0;

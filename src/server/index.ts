@@ -9,7 +9,6 @@ import { AppError, isAppError } from "./errors.js";
 import { logger } from "./logger.js";
 import { createReceiptExtractor } from "./ai/createReceiptExtractor.js";
 import { createReceiptRepository } from "./repositories/createRepository.js";
-import { protectedMode } from "./security.js";
 import { LocalFileStorage } from "./storage/localStorage.js";
 import { createReceiptRouter } from "./routes/receiptRoutes.js";
 
@@ -57,7 +56,7 @@ async function bootstrap(): Promise<void> {
     });
   });
 
-  app.get("/api/system/check", protectedMode, async (_req, res) => {
+  app.get("/api/system/check", async (_req, res) => {
     res.json({
       database: {
         connected: true,
@@ -76,14 +75,14 @@ async function bootstrap(): Promise<void> {
       app: {
         version: process.env.npm_package_version ?? "0.1.0",
         node: process.version,
-        protectedMode: Boolean(config.appAccessToken && config.appAccessToken !== "change-me-for-protected-mode")
+        authEnabled: false
       }
     });
   });
 
-  app.use("/api/receipts", protectedMode, uploadLimiter, createReceiptRouter({ repository, storage, extractor }));
+  app.use("/api/receipts", uploadLimiter, createReceiptRouter({ repository, storage, extractor }));
 
-  app.get("/files/:receiptId/:fileId", protectedMode, async (req, res) => {
+  app.get("/files/:receiptId/:fileId", async (req, res) => {
     const receiptId = String(req.params.receiptId);
     const fileId = String(req.params.fileId);
     const receipt = await repository.getReceipt(receiptId);

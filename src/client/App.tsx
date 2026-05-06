@@ -13,7 +13,7 @@ import {
   Upload,
   WandSparkles
 } from "lucide-react";
-import { api, fileUrl, getAccessToken, setAccessToken } from "./api";
+import { api, fileUrl } from "./api";
 import {
   captureVideoFrame,
   detectReceipt,
@@ -60,7 +60,6 @@ export default function App() {
   const [corners, setCorners] = useState<Point[]>([]);
   const [toast, setToast] = useState<{ message: string; tone?: "success" | "danger" } | null>(null);
   const [processingStage, setProcessingStage] = useState(0);
-  const [accessToken, setTokenState] = useState(getAccessToken());
 
   useEffect(() => {
     void refreshReceipts();
@@ -74,8 +73,8 @@ export default function App() {
     try {
       const response = await api.listReceipts();
       setReceipts(response.receipts);
-    } catch {
-      // Protected mode can block list until token is set; the welcome screen explains it.
+    } catch (error) {
+      showError(error);
     }
   }
 
@@ -147,12 +146,6 @@ export default function App() {
     }
   }
 
-  function saveAccessToken() {
-    setAccessToken(accessToken.trim());
-    showToast("Piekļuves atslēga saglabāta šajā pārlūkā.");
-    void refreshReceipts();
-  }
-
   function showToast(message: string) {
     setToast({ message });
     window.setTimeout(() => setToast(null), 3500);
@@ -192,7 +185,7 @@ export default function App() {
       ) : null}
 
       {view === "welcome" ? (
-        <WelcomeScreen onScan={() => setView("scanner")} onUpload={() => document.getElementById("receipt-upload")?.click()} accessToken={accessToken} setAccessToken={setTokenState} saveAccessToken={saveAccessToken} />
+        <WelcomeScreen onScan={() => setView("scanner")} onUpload={() => document.getElementById("receipt-upload")?.click()} />
       ) : null}
       {view === "scanner" ? <ScannerScreen onClose={() => setView("welcome")} onCapture={handleFileSelected} onUpload={() => document.getElementById("receipt-upload")?.click()} /> : null}
       {view === "crop" && detection ? (
@@ -217,7 +210,7 @@ export default function App() {
       {view === "detail" && activeReceipt ? (
         <ReceiptDetail receipt={activeReceipt} originalUrl={activeOriginalFile ? fileUrl(activeReceipt.id, activeOriginalFile.id) : ""} processedUrl={activeProcessedFile ? fileUrl(activeReceipt.id, activeProcessedFile.id) : ""} pdfUrl={activePdfFile ? fileUrl(activeReceipt.id, activePdfFile.id) : ""} onReview={() => setView("review")} />
       ) : null}
-      {view === "settings" ? <SettingsScreen accessToken={accessToken} setAccessToken={setTokenState} saveAccessToken={saveAccessToken} /> : null}
+      {view === "settings" ? <SettingsScreen /> : null}
     </div>
   );
 }
@@ -225,9 +218,6 @@ export default function App() {
 function WelcomeScreen(props: {
   onScan: () => void;
   onUpload: () => void;
-  accessToken: string;
-  setAccessToken: (value: string) => void;
-  saveAccessToken: () => void;
 }) {
   return (
     <main className="welcome-screen">
@@ -240,10 +230,6 @@ function WelcomeScreen(props: {
         <div className="stack">
           <Button icon={Camera} full onClick={props.onScan}>Skenēt čeku</Button>
           <Button icon={Upload} variant="secondary" full onClick={props.onUpload}>Augšupielādēt no galerijas</Button>
-        </div>
-        <div className="protected-entry">
-          <Input label="Piekļuves atslēga" value={props.accessToken} onChange={props.setAccessToken} placeholder="Ja serveris izmanto protected mode" />
-          <Button variant="ghost" onClick={props.saveAccessToken}>Saglabāt</Button>
         </div>
       </Card>
     </main>
@@ -602,7 +588,7 @@ function ReceiptDetail(props: { receipt: ReceiptRecord; originalUrl: string; pro
   );
 }
 
-function SettingsScreen(props: { accessToken: string; setAccessToken: (value: string) => void; saveAccessToken: () => void }) {
+function SettingsScreen() {
   const [check, setCheck] = useState<unknown>(null);
   const [error, setError] = useState("");
 
@@ -616,10 +602,6 @@ function SettingsScreen(props: { accessToken: string; setAccessToken: (value: st
         <h1>Sistēmas pārbaude</h1>
         <p>Konfigurācijas statuss bez slepenu vērtību rādīšanas.</p>
       </header>
-      <Card>
-        <Input label="Piekļuves atslēga" value={props.accessToken} onChange={props.setAccessToken} placeholder="APP_ACCESS_TOKEN" />
-        <Button onClick={props.saveAccessToken}>Saglabāt</Button>
-      </Card>
       {error ? <WarningBanner tone="danger">{error}</WarningBanner> : null}
       <Card>
         <pre>{JSON.stringify(check ?? { loading: true }, null, 2)}</pre>
