@@ -60,7 +60,14 @@ export class LocalFileStorage {
 
   async readBuffer(storageKey: string): Promise<Buffer> {
     const file = this.absolutePath(storageKey);
-    return fs.readFile(file);
+    try {
+      return await fs.readFile(file);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "ENOENT") {
+        throw new AppError(404, "stored_file_missing", "Saglabātais fails nav atrodams. Augšupielādē čeku vēlreiz.");
+      }
+      throw error;
+    }
   }
 
   async createReceiptPdf(input: {

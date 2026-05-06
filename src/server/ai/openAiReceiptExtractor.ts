@@ -23,7 +23,6 @@ export class OpenAiReceiptExtractor implements ReceiptExtractor {
     const started = Date.now();
     const completion = await this.client.chat.completions.parse({
       model: config.aiModel,
-      temperature: 0,
       response_format: zodResponseFormat(receiptExtractionSchema, "receipt_extraction"),
       messages: [
         {

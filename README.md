@@ -46,7 +46,7 @@ Required for production:
 - `OPENAI_API_KEY`: backend-only OpenAI key
 - `AI_MODEL`: image-capable model name; configurable for future replacement
 - `DATABASE_URL` or `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
-- `LOCAL_STORAGE_DIR`: non-public upload storage directory
+- `LOCAL_STORAGE_DIR`: non-public upload storage directory. On Hostinger, prefer an absolute path or keep the default relative `storage`, which production resolves outside the deploy app folder.
 - `MAX_UPLOAD_BYTES`: upload limit, default 10 MB
 
 Optional:

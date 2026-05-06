@@ -19,7 +19,7 @@ export const config = {
   port: toNumber(process.env.PORT, 3000),
   publicAppUrl: process.env.PUBLIC_APP_URL ?? "http://localhost:5173",
   maxUploadBytes: toNumber(process.env.MAX_UPLOAD_BYTES, 10 * 1024 * 1024),
-  localStorageDir: path.resolve(process.cwd(), process.env.LOCAL_STORAGE_DIR ?? "storage"),
+  localStorageDir: resolveStorageDir(process.env.LOCAL_STORAGE_DIR ?? "storage"),
   databaseUrl: process.env.DATABASE_URL ?? "",
   db: {
     host: process.env.DB_HOST ?? "",
@@ -36,3 +36,9 @@ export const config = {
 };
 
 export type AppConfig = typeof config;
+
+function resolveStorageDir(value: string): string {
+  if (path.isAbsolute(value)) return path.resolve(value);
+  const baseDir = process.env.NODE_ENV === "production" ? path.resolve(process.cwd(), "..") : process.cwd();
+  return path.resolve(baseDir, value);
+}
