@@ -44,7 +44,7 @@ import {
 import { formatCents, parseMoneyToCents } from "../shared/money";
 import type { ImageQualityReport, ReceiptExtraction, ReceiptRecord, ReceiptStatus } from "../shared/receiptTypes";
 
-type View = "welcome" | "crop" | "review" | "list" | "detail" | "settings" | "debug";
+type View = "welcome" | "crop" | "processing" | "review" | "list" | "detail" | "settings" | "debug";
 
 const stages = ["Augšupielāde", "Attēla apstrāde", "PDF izveide", "Čeka nolasīšana", "Datu validācija", "Saglabāšana datubāzē"];
 
@@ -52,6 +52,7 @@ interface BackgroundJob {
   id: string;
   stage: number;
   startedAt: number;
+  label: string;
 }
 
 export default function App() {
@@ -127,11 +128,12 @@ export default function App() {
       corners: [...corners]
     };
 
-    setBackgroundJobs((jobs) => [...jobs.filter((job) => job.id !== activeReceipt.id), { id: activeReceipt.id, stage: 1, startedAt: Date.now() }]);
+    setBackgroundJobs((jobs) => [
+      ...jobs.filter((job) => job.id !== activeReceipt.id),
+      { id: activeReceipt.id, stage: 0, startedAt: Date.now(), label: activeReceipt.merchantDisplayName ?? "Jauns dokuments" }
+    ]);
     resetScanDraft();
-    setView("welcome");
-    showToast("Čeks apstrādājas fonā. Vari skenēt nākamo.");
-    openCameraCapture();
+    setView("processing");
     void processReceiptInBackground(jobInput);
   }
 
@@ -258,9 +260,9 @@ export default function App() {
   return (
     <div className="app-shell">
       {toast ? <Toast message={toast.message} tone={toast.tone} /> : null}
-      {backgroundJobs.length ? <BackgroundProcessingBadge jobs={backgroundJobs} /> : null}
+      {backgroundJobs.length && view !== "processing" ? <BackgroundProcessingBadge jobs={backgroundJobs} /> : null}
       {fileInputs}
-      {view !== "crop" ? (
+      {view !== "crop" && view !== "processing" ? (
         <nav className="top-nav" aria-label="Galvenā navigācija">
           <button type="button" onClick={() => setView("welcome")}>Čeku skeneris</button>
           <div>
@@ -286,11 +288,14 @@ export default function App() {
           onContinue={continueProcessing}
         />
       ) : null}
+      {view === "processing" ? (
+        <ProcessingScreen jobs={backgroundJobs} onScan={openCameraCapture} onList={() => { setView("list"); void refreshReceipts(); }} />
+      ) : null}
       {view === "review" && activeReceipt ? (
         <ReviewScreen receipt={activeReceipt} processedUrl={activeProcessedFile ? fileUrl(activeReceipt.id, activeProcessedFile.id) : ""} onReceipt={setActiveReceipt} onList={() => { setView("list"); void refreshReceipts(); }} />
       ) : null}
       {view === "list" ? (
-        <ReceiptList receipts={receipts} onRefresh={refreshReceipts} onOpen={(receipt) => { setActiveReceipt(receipt); setView("detail"); }} onDelete={deleteReceipt} onScan={openCameraCapture} onResume={resumeReceiptFromOriginal} />
+        <ReceiptList receipts={receipts} jobs={backgroundJobs} onRefresh={refreshReceipts} onOpen={(receipt) => { setActiveReceipt(receipt); setView("detail"); }} onDelete={deleteReceipt} onScan={openCameraCapture} onResume={resumeReceiptFromOriginal} />
       ) : null}
       {view === "detail" && activeReceipt ? (
         <ReceiptDetail
@@ -446,6 +451,45 @@ function BackgroundProcessingBadge({ jobs }: { jobs: BackgroundJob[] }) {
   );
 }
 
+function ProcessingScreen(props: { jobs: BackgroundJob[]; onScan: () => void; onList: () => void }) {
+  const latestStage = props.jobs.length ? Math.max(...props.jobs.map((job) => job.stage)) : stages.length;
+  const activeJob = props.jobs[0] ?? null;
+
+  return (
+    <main className="processing-screen">
+      <Card className="processing-card">
+        <div className="processing-header">
+          <div className="app-mark processing-mark" aria-hidden="true">
+            <WandSparkles size={32} />
+          </div>
+          <div>
+            <h1>{props.jobs.length ? "Apstrādā dokumentu" : "Apstrāde pabeigta"}</h1>
+            <p>{activeJob ? activeJob.label : "Vari skenēt nākamo dokumentu vai atvērt sarakstu."}</p>
+          </div>
+        </div>
+        <ol className="processing-steps" aria-label="Apstrādes progress">
+          {stages.map((stage, index) => {
+            const state = index < latestStage ? "done" : index === latestStage && props.jobs.length ? "active" : "pending";
+            return (
+              <li className={`processing-step ${state}`} key={stage}>
+                <span>{index + 1}</span>
+                <div>
+                  <strong>{stage}</strong>
+                  <small>{state === "done" ? "Pabeigts" : state === "active" ? "Notiek" : "Gaida"}</small>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+        <div className="processing-actions">
+          <Button icon={Camera} onClick={props.onScan}>Turpināt skenēt citus dokumentus</Button>
+          <Button variant="secondary" icon={ClipboardList} onClick={props.onList}>Atvērt sarakstu</Button>
+        </div>
+      </Card>
+    </main>
+  );
+}
+
 function ReviewScreen(props: { receipt: ReceiptRecord; processedUrl: string; onReceipt: (receipt: ReceiptRecord) => void; onList: () => void }) {
   const [extraction, setExtraction] = useState<ReceiptExtraction | null>(props.receipt.extraction);
   const [saving, setSaving] = useState(false);
@@ -573,6 +617,7 @@ function LineItemsEditor({ extraction, setExtraction }: { extraction: ReceiptExt
 
 function ReceiptList(props: {
   receipts: ReceiptRecord[];
+  jobs: BackgroundJob[];
   onRefresh: () => void;
   onOpen: (receipt: ReceiptRecord) => void;
   onDelete: (receipt: ReceiptRecord) => void;
@@ -588,6 +633,7 @@ function ReceiptList(props: {
     return matchesStatus && matchesQuery;
   }), [props.receipts, q, status]);
   const canResume = (receipt: ReceiptRecord) => receipt.files.some((file) => file.kind === "original_image") && !receipt.files.some((file) => file.kind === "processed_image");
+  const jobByReceiptId = useMemo(() => new Map(props.jobs.map((job) => [job.id, job])), [props.jobs]);
 
   return (
     <main className="list-screen">
@@ -607,6 +653,8 @@ function ReceiptList(props: {
           options={[
             { value: "all", label: "Visi" },
             { value: "uploaded", label: "Augšupielādēts" },
+            { value: "image_processed", label: "Attēls apstrādāts" },
+            { value: "extracted", label: "Nolasīts" },
             { value: "needs_review", label: "Jāpārbauda" },
             { value: "verified", label: "Verificēts" },
             { value: "failed", label: "Kļūda" }
@@ -617,32 +665,36 @@ function ReceiptList(props: {
         <EmptyState title="Nav čeku" text="Sāc ar pirmo skenēšanu vai augšupielādi." action={<Button icon={Camera} onClick={props.onScan}>Skenēt čeku</Button>} />
       ) : (
         <div className="receipt-list">
-          {filtered.map((receipt) => (
-            <Card key={receipt.id}>
-              <div className={`receipt-list-item ${canResume(receipt) ? "has-resume" : ""}`}>
-                <RowLink onClick={() => props.onOpen(receipt)}>
-                  <div className="receipt-row">
-                    <div>
-                      <strong>{receipt.merchantDisplayName ?? "Nezināms tirgotājs"}</strong>
-                      <span>{receipt.receiptDate ?? "Datums nav drošs"}</span>
+          {filtered.map((receipt) => {
+            const job = jobByReceiptId.get(receipt.id);
+            return (
+              <Card key={receipt.id}>
+                <div className={`receipt-list-item ${canResume(receipt) ? "has-resume" : ""}`}>
+                  <RowLink onClick={() => props.onOpen(receipt)}>
+                    <div className="receipt-row">
+                      <div>
+                        <strong>{receipt.merchantDisplayName ?? "Nezināms tirgotājs"}</strong>
+                        <span>{receipt.receiptDate ?? "Datums nav drošs"}</span>
+                        <ReceiptAiProgress receipt={receipt} job={job} />
+                      </div>
+                      <div>
+                        <StatusPill status={receipt.status} />
+                        <strong>{formatCents(receipt.grandTotalCents, receipt.currency ?? "EUR")}</strong>
+                      </div>
                     </div>
-                    <div>
-                      <StatusPill status={receipt.status} />
-                      <strong>{formatCents(receipt.grandTotalCents, receipt.currency ?? "EUR")}</strong>
-                    </div>
-                  </div>
-                </RowLink>
-                {canResume(receipt) ? (
-                  <button className="receipt-action-button" type="button" onClick={() => props.onResume(receipt)} aria-label="Apstrādāt čeku" title="Apstrādāt čeku">
-                    <WandSparkles aria-hidden="true" size={20} />
+                  </RowLink>
+                  {canResume(receipt) ? (
+                    <button className="receipt-action-button" type="button" onClick={() => props.onResume(receipt)} aria-label="Apstrādāt čeku" title="Apstrādāt čeku">
+                      <WandSparkles aria-hidden="true" size={20} />
+                    </button>
+                  ) : null}
+                  <button className="receipt-delete-button" type="button" onClick={() => props.onDelete(receipt)} aria-label="Dzēst čeku" title="Dzēst čeku">
+                    <Trash2 aria-hidden="true" size={20} />
                   </button>
-                ) : null}
-                <button className="receipt-delete-button" type="button" onClick={() => props.onDelete(receipt)} aria-label="Dzēst čeku" title="Dzēst čeku">
-                  <Trash2 aria-hidden="true" size={20} />
-                </button>
-              </div>
-            </Card>
-          ))}
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
       <button className="floating-scan" type="button" onClick={props.onScan} aria-label="Skenēt čeku">
@@ -650,6 +702,25 @@ function ReceiptList(props: {
       </button>
     </main>
   );
+}
+
+function ReceiptAiProgress({ receipt, job }: { receipt: ReceiptRecord; job?: BackgroundJob }) {
+  if (job) {
+    const stage = stages[clamp(job.stage, 0, stages.length - 1)] ?? stages[0];
+    const percent = Math.round(((clamp(job.stage, 0, stages.length - 1) + 1) / stages.length) * 100);
+    return (
+      <div className="receipt-progress" aria-label={`Apstrāde: ${stage}`}>
+        <span>Apstrādājas · {stage}</span>
+        <progress value={percent} max={100}>{percent}%</progress>
+      </div>
+    );
+  }
+
+  const aiDone = Boolean(receipt.extraction || receipt.files.some((file) => file.kind === "raw_ai_response_json") || ["extracted", "needs_review", "verified"].includes(receipt.status));
+  if (aiDone) return <span className="receipt-ai-state done">AI nolasīts</span>;
+  if (receipt.status === "failed") return <span className="receipt-ai-state failed">AI/nolasīšana neizdevās</span>;
+  if (receipt.files.some((file) => file.kind === "processed_image")) return <span className="receipt-ai-state pending">Gaida AI nolasīšanu</span>;
+  return <span className="receipt-ai-state pending">Gaida apstrādi</span>;
 }
 
 function ReceiptDetail(props: {

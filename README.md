@@ -109,14 +109,16 @@ Hostinger references:
 2. User opens the native phone camera or uploads from gallery.
 3. Original image is saved unchanged.
 4. Browser detects receipt edges and shows draggable crop handles.
-5. User adjusts the corners and taps `Turpināt`; the browser straightens/enhances the image using the selected crop's own pixel size and proportions without forcing an A4 shape or downscaling the crop.
-6. Backend saves the processed image.
-7. Backend generates and saves a clean PDF.
-8. Backend sends the original and processed receipt images to the configured AI provider.
-9. AI returns strict structured JSON.
-10. Backend normalizes money to integer cents.
-11. Validation decides `verified` or `needs_review`.
-12. User can manually correct fields; audit log records edits.
+5. User adjusts the corners and taps `Turpināt`; the app shows a numbered progress screen.
+6. The browser straightens/enhances the image using the selected crop's own pixel size and proportions without forcing an A4 shape or downscaling the crop.
+7. Backend saves the processed image.
+8. Backend generates and saves a clean PDF.
+9. Backend sends the original and processed receipt images to the configured AI provider.
+10. AI returns strict structured JSON.
+11. Backend normalizes money to integer cents.
+12. Validation decides `verified` or `needs_review`.
+13. User can continue scanning more documents from the progress screen while existing jobs keep running in the background; the receipt list shows AI-completed receipts and active processing progress.
+14. User can manually correct fields; audit log records edits.
 
 ## Receipt Statuses
 
