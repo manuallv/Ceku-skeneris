@@ -5,7 +5,7 @@ dist/
 .env.*
 !.env.example
 coverage/
-storage/
+/storage/
 .local/
 npm-debug.log*
 yarn-debug.log*
