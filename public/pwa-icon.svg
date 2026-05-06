@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Čeku skeneris">
+  <rect width="512" height="512" rx="112" fill="#f7f8fb"/>
+  <rect x="132" y="76" width="248" height="360" rx="32" fill="#ffffff" stroke="#c8d0dd" stroke-width="12"/>
+  <path d="M172 156h168M172 210h128M172 264h158M172 318h98" stroke="#293241" stroke-width="22" stroke-linecap="round"/>
+  <path d="M132 108 158 86l26 22 26-22 26 22 26-22 26 22 26-22 26 22 26-22 18 16" fill="none" stroke="#c8d0dd" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="348" cy="356" r="46" fill="#34c759"/>
+</svg>
