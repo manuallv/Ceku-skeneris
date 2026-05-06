@@ -781,6 +781,10 @@ video {
   align-items: center;
 }
 
+.receipt-list-item.has-resume {
+  grid-template-columns: minmax(0, 1fr) repeat(2, 46px);
+}
+
 .row-link {
   width: 100%;
   display: flex;
@@ -805,15 +809,26 @@ video {
   gap: var(--space-2);
 }
 
+.receipt-action-button,
 .receipt-delete-button {
   min-height: 46px;
   width: 46px;
   display: inline-grid;
   place-items: center;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, var(--line));
+  border-radius: var(--radius-pill);
+}
+
+.receipt-action-button:hover {
+  background: color-mix(in srgb, var(--primary) 14%, var(--surface));
+}
+
+.receipt-delete-button {
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 10%, var(--surface));
   border: 1px solid color-mix(in srgb, var(--danger) 22%, var(--line));
-  border-radius: var(--radius-pill);
 }
 
 .receipt-delete-button:hover {
@@ -1065,6 +1080,21 @@ pre {
 
   .receipt-row {
     align-items: flex-start;
+  }
+
+  .receipt-list-item {
+    grid-template-columns: minmax(0, 1fr) 44px;
+    gap: var(--space-2);
+  }
+
+  .receipt-list-item.has-resume {
+    grid-template-columns: minmax(0, 1fr) repeat(2, 44px);
+  }
+
+  .receipt-action-button,
+  .receipt-delete-button {
+    min-height: 44px;
+    width: 44px;
   }
 
   .bottom-actions {

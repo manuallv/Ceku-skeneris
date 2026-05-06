@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowLeft,
   Camera,
   Check,
   ClipboardList,
   FileImage,
-  Flashlight,
   ListFilter,
   RefreshCw,
   RotateCcw,
@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import { api, fileUrl } from "./api";
 import {
-  captureVideoFrame,
   detectReceipt,
   fileToObjectUrl,
   pointToPercent,
@@ -32,10 +31,8 @@ import {
   FieldGroup,
   IconButton,
   Input,
-  ProgressStepper,
   ReceiptPreview,
   RowLink,
-  ScannerFrame,
   Select,
   StatusPill,
   Toast,
@@ -44,7 +41,7 @@ import {
 import { formatCents, parseMoneyToCents } from "../shared/money";
 import type { ImageQualityReport, ReceiptExtraction, ReceiptRecord, ReceiptStatus } from "../shared/receiptTypes";
 
-type View = "welcome" | "scanner" | "crop" | "processing" | "review" | "list" | "detail" | "settings";
+type View = "welcome" | "crop" | "review" | "list" | "detail" | "settings";
 
 const stages = ["Augšupielāde", "Attēla apstrāde", "PDF izveide", "Čeka nolasīšana", "Datu validācija", "Saglabāšana datubāzē"];
 
@@ -65,8 +62,9 @@ export default function App() {
   const [detection, setDetection] = useState<DetectionResult | null>(null);
   const [corners, setCorners] = useState<Point[]>([]);
   const [toast, setToast] = useState<{ message: string; tone?: "success" | "danger" } | null>(null);
-  const [processingStage, setProcessingStage] = useState(0);
   const [backgroundJobs, setBackgroundJobs] = useState<BackgroundJob[]>([]);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     void refreshReceipts();
@@ -85,14 +83,30 @@ export default function App() {
     }
   }
 
+  async function refreshActiveReceipt(id: string) {
+    try {
+      const response = await api.getReceipt(id);
+      setActiveReceipt(response.receipt);
+      void refreshReceipts();
+    } catch (error) {
+      showError(error);
+    }
+  }
+
+  function openCameraCapture() {
+    cameraInputRef.current?.click();
+  }
+
+  function openGalleryPicker() {
+    galleryInputRef.current?.click();
+  }
+
   async function handleFileSelected(file: File) {
     try {
-      setProcessingStage(0);
       setOriginalFile(file);
       setOriginalUrl(await fileToObjectUrl(file));
       const upload = await api.uploadReceipt(file);
       setActiveReceipt(upload.receipt);
-      setProcessingStage(1);
       const detected = await detectReceipt(file);
       setDetection(detected);
       setCorners(insetInitialCorners(detected.corners, detected.imageWidth, detected.imageHeight));
@@ -128,8 +142,9 @@ export default function App() {
 
     setBackgroundJobs((jobs) => [...jobs.filter((job) => job.id !== activeReceipt.id), { id: activeReceipt.id, stage: 1, startedAt: Date.now() }]);
     resetScanDraft();
-    setView("scanner");
+    setView("welcome");
     showToast("Čeks apstrādājas fonā. Vari skenēt nākamo.");
+    openCameraCapture();
     void processReceiptInBackground(jobInput);
   }
 
@@ -177,7 +192,6 @@ export default function App() {
     setProcessedBlob(null);
     setDetection(null);
     setCorners([]);
-    setProcessingStage(0);
   }
 
   function showToast(message: string) {
@@ -206,30 +220,73 @@ export default function App() {
     }
   }
 
-  const uploadInput = (
-    <input
-      className="sr-only"
-      id="receipt-upload"
-      type="file"
-      accept="image/jpeg,image/png"
-      capture="environment"
-      onChange={(event) => {
-        const file = event.currentTarget.files?.[0];
-        if (file) void handleFileSelected(file);
-        event.currentTarget.value = "";
-      }}
-    />
+  async function resumeReceiptFromOriginal(receipt: ReceiptRecord) {
+    const original = receipt.files.find((file) => file.kind === "original_image");
+    if (!original) {
+      showError(new Error("Oriģinālais fails nav atrasts."));
+      return;
+    }
+
+    try {
+      const sourceUrl = fileUrl(receipt.id, original.id);
+      const response = await fetch(sourceUrl);
+      if (!response.ok) throw new Error("Oriģinālo attēlu neizdevās ielādēt.");
+      const blob = await response.blob();
+      const file = new File([blob], original.originalName || "receipt.jpg", { type: original.mimeType || blob.type || "image/jpeg" });
+      setActiveReceipt(receipt);
+      setOriginalFile(file);
+      setOriginalUrl(await fileToObjectUrl(file));
+      setProcessedBlob(null);
+      setProcessedUrl("");
+      const detected = await detectReceipt(file);
+      setDetection(detected);
+      setCorners(insetInitialCorners(detected.corners, detected.imageWidth, detected.imageHeight));
+      setView("crop");
+    } catch (error) {
+      showError(error);
+    }
+  }
+
+  const fileInputs = (
+    <>
+      <input
+        ref={cameraInputRef}
+        hidden
+        id="receipt-camera"
+        type="file"
+        accept="image/jpeg,image/png"
+        capture="environment"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          if (file) void handleFileSelected(file);
+          event.currentTarget.value = "";
+        }}
+      />
+      <input
+        ref={galleryInputRef}
+        hidden
+        id="receipt-gallery"
+        type="file"
+        accept="image/jpeg,image/png"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          if (file) void handleFileSelected(file);
+          event.currentTarget.value = "";
+        }}
+      />
+    </>
   );
 
   return (
     <div className="app-shell">
       {toast ? <Toast message={toast.message} tone={toast.tone} /> : null}
       {backgroundJobs.length ? <BackgroundProcessingBadge jobs={backgroundJobs} /> : null}
-      {uploadInput}
-      {view !== "scanner" && view !== "crop" && view !== "processing" ? (
+      {fileInputs}
+      {view !== "crop" ? (
         <nav className="top-nav" aria-label="Galvenā navigācija">
           <button type="button" onClick={() => setView("welcome")}>Čeku skeneris</button>
           <div>
+            <IconButton label="Skenēt čeku" icon={Camera} onClick={openCameraCapture} />
             <IconButton label="Saraksts" icon={ClipboardList} onClick={() => { setView("list"); void refreshReceipts(); }} />
             <IconButton label="Iestatījumi" icon={Settings} onClick={() => setView("settings")} />
           </div>
@@ -237,9 +294,8 @@ export default function App() {
       ) : null}
 
       {view === "welcome" ? (
-        <WelcomeScreen onScan={() => setView("scanner")} onUpload={() => document.getElementById("receipt-upload")?.click()} />
+        <WelcomeScreen onScan={openCameraCapture} onUpload={openGalleryPicker} />
       ) : null}
-      {view === "scanner" ? <ScannerScreen onClose={() => setView("welcome")} onCapture={handleFileSelected} onUpload={() => document.getElementById("receipt-upload")?.click()} /> : null}
       {view === "crop" && detection ? (
         <CropScreen
           imageUrl={originalUrl}
@@ -247,20 +303,30 @@ export default function App() {
           corners={corners}
           processedUrl={processedUrl}
           setCorners={setCorners}
+          onBack={() => { resetScanDraft(); setView("welcome"); }}
           onStraighten={straightenReceipt}
-          onRetake={() => setView("scanner")}
+          onRetake={openCameraCapture}
           onContinue={continueProcessing}
         />
       ) : null}
-      {view === "processing" ? <ProcessingScreen active={processingStage} /> : null}
       {view === "review" && activeReceipt ? (
         <ReviewScreen receipt={activeReceipt} processedUrl={processedUrl || (activeProcessedFile ? fileUrl(activeReceipt.id, activeProcessedFile.id) : "")} onReceipt={setActiveReceipt} onList={() => { setView("list"); void refreshReceipts(); }} />
       ) : null}
       {view === "list" ? (
-        <ReceiptList receipts={receipts} onRefresh={refreshReceipts} onOpen={(receipt) => { setActiveReceipt(receipt); setView("detail"); }} onDelete={deleteReceipt} onScan={() => setView("scanner")} />
+        <ReceiptList receipts={receipts} onRefresh={refreshReceipts} onOpen={(receipt) => { setActiveReceipt(receipt); setView("detail"); }} onDelete={deleteReceipt} onScan={openCameraCapture} onResume={resumeReceiptFromOriginal} />
       ) : null}
       {view === "detail" && activeReceipt ? (
-        <ReceiptDetail receipt={activeReceipt} originalUrl={activeOriginalFile ? fileUrl(activeReceipt.id, activeOriginalFile.id) : ""} processedUrl={activeProcessedFile ? fileUrl(activeReceipt.id, activeProcessedFile.id) : ""} pdfUrl={activePdfFile ? fileUrl(activeReceipt.id, activePdfFile.id) : ""} onReview={() => setView("review")} onDelete={deleteReceipt} />
+        <ReceiptDetail
+          receipt={activeReceipt}
+          originalUrl={activeOriginalFile ? fileUrl(activeReceipt.id, activeOriginalFile.id) : ""}
+          processedUrl={activeProcessedFile ? fileUrl(activeReceipt.id, activeProcessedFile.id) : ""}
+          pdfUrl={activePdfFile ? fileUrl(activeReceipt.id, activePdfFile.id) : ""}
+          onBack={() => { setView("list"); void refreshReceipts(); }}
+          onRefresh={() => void refreshActiveReceipt(activeReceipt.id)}
+          onReview={() => setView("review")}
+          onResume={resumeReceiptFromOriginal}
+          onDelete={deleteReceipt}
+        />
       ) : null}
       {view === "settings" ? <SettingsScreen /> : null}
     </div>
@@ -288,106 +354,13 @@ function WelcomeScreen(props: {
   );
 }
 
-function ScannerScreen(props: { onClose: () => void; onCapture: (file: File) => void; onUpload: () => void }) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const [ready, setReady] = useState(false);
-  const [torchOn, setTorchOn] = useState(false);
-  const [error, setError] = useState("");
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [deviceId, setDeviceId] = useState("");
-
-  useEffect(() => {
-    let alive = true;
-    const browserMediaDevices = (navigator as Navigator & { mediaDevices?: MediaDevices }).mediaDevices;
-
-    async function startCamera() {
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-      setReady(false);
-      setTorchOn(false);
-      setError("");
-      try {
-        const video: MediaTrackConstraints = {
-          width: { ideal: 1920 },
-          height: { ideal: 2560 },
-          ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: "environment" } })
-        };
-        const stream = await browserMediaDevices?.getUserMedia({ video, audio: false });
-        if (!stream) throw new Error("camera_unavailable");
-        if (!alive) return;
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          setReady(true);
-        }
-        const available = await browserMediaDevices.enumerateDevices?.() ?? [];
-        if (alive) setDevices(available.filter((device) => device.kind === "videoinput"));
-      } catch {
-        if (alive) setError("Kameru neizdevās atvērt. Izmanto galerijas augšupielādi.");
-      }
-    }
-
-    void startCamera();
-
-    return () => {
-      alive = false;
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-    };
-  }, [deviceId]);
-
-  async function toggleTorch() {
-    const track = streamRef.current?.getVideoTracks()[0];
-    const capabilities = track?.getCapabilities?.() as MediaTrackCapabilities & { torch?: boolean };
-    if (!track || !capabilities?.torch) return;
-    await track.applyConstraints({ advanced: [{ torch: !torchOn } as MediaTrackConstraintSet] });
-    setTorchOn(!torchOn);
-  }
-
-  async function capture() {
-    if (!videoRef.current) return;
-    props.onCapture(await captureVideoFrame(videoRef.current));
-  }
-
-  return (
-    <main className="scanner-screen">
-      <video ref={videoRef} autoPlay playsInline muted />
-      <ScannerFrame />
-      <div className="scanner-guidance">Novieto čeku rāmī</div>
-      {error ? <div className="scanner-error">{error}</div> : null}
-      <div className="scanner-top">
-        <IconButton label="Aizvērt" icon={RotateCcw} onClick={props.onClose} />
-        <div className="scanner-controls">
-          {devices.length > 1 ? (
-            <label className="camera-select">
-              <span>Kamera</span>
-              <select value={deviceId} onChange={(event) => setDeviceId(event.target.value)} aria-label="Izvēlēties kameru">
-                <option value="">Auto</option>
-                {devices.map((device, index) => (
-                  <option key={device.deviceId} value={device.deviceId}>
-                    {device.label || `Kamera ${index + 1}`}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <IconButton label="Zibspuldze" icon={Flashlight} onClick={toggleTorch} />
-        </div>
-      </div>
-      <div className="scanner-actions">
-        <Button variant="secondary" icon={Upload} onClick={props.onUpload}>Galerija</Button>
-        <button className="capture-button" type="button" aria-label="Uzņemt čeku" onClick={capture} disabled={!ready} />
-      </div>
-    </main>
-  );
-}
-
 function CropScreen(props: {
   imageUrl: string;
   detection: DetectionResult;
   corners: Point[];
   processedUrl: string;
   setCorners: (points: Point[]) => void;
+  onBack: () => void;
   onStraighten: () => void;
   onRetake: () => void;
   onContinue: () => void;
@@ -440,9 +413,12 @@ function CropScreen(props: {
 
   return (
     <main className="crop-screen">
-      <header className="screen-header">
-        <h1>Iztaisnot čeku</h1>
-        <p>Pārbaudi stūrus pirms nolasīšanas.</p>
+      <header className="screen-header row-header">
+        <div>
+          <h1>Iztaisnot čeku</h1>
+          <p>Pārbaudi stūrus pirms nolasīšanas.</p>
+        </div>
+        <IconButton label="Atpakaļ" icon={ArrowLeft} onClick={props.onBack} />
       </header>
       {warnings.length ? <WarningBanner>{warnings.join(" ")}</WarningBanner> : null}
       <div className="crop-layout">
@@ -476,19 +452,6 @@ function CropScreen(props: {
         <Button variant="secondary" icon={WandSparkles} onClick={props.onStraighten}>Iztaisnot čeku</Button>
         <Button icon={Check} onClick={props.onContinue}>Turpināt</Button>
       </div>
-    </main>
-  );
-}
-
-function ProcessingScreen({ active }: { active: number }) {
-  return (
-    <main className="processing-screen">
-      <Card>
-        <div className="processing-ring" aria-hidden="true" />
-        <h1>Apstrādājam čeku</h1>
-        <p>Dati tiks saglabāti tikai pēc stingras validācijas.</p>
-        <ProgressStepper stages={stages} active={active} />
-      </Card>
     </main>
   );
 }
@@ -621,7 +584,14 @@ function LineItemsEditor({ extraction, setExtraction }: { extraction: ReceiptExt
   );
 }
 
-function ReceiptList(props: { receipts: ReceiptRecord[]; onRefresh: () => void; onOpen: (receipt: ReceiptRecord) => void; onDelete: (receipt: ReceiptRecord) => void; onScan: () => void }) {
+function ReceiptList(props: {
+  receipts: ReceiptRecord[];
+  onRefresh: () => void;
+  onOpen: (receipt: ReceiptRecord) => void;
+  onDelete: (receipt: ReceiptRecord) => void;
+  onScan: () => void;
+  onResume: (receipt: ReceiptRecord) => void;
+}) {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<ReceiptStatus | "all">("all");
   const filtered = useMemo(() => props.receipts.filter((receipt) => {
@@ -630,6 +600,7 @@ function ReceiptList(props: { receipts: ReceiptRecord[]; onRefresh: () => void; 
     const matchesQuery = !query || [receipt.merchantDisplayName, receipt.receiptDate, receipt.grandTotalRaw].filter(Boolean).some((value) => String(value).toLowerCase().includes(query));
     return matchesStatus && matchesQuery;
   }), [props.receipts, q, status]);
+  const canResume = (receipt: ReceiptRecord) => receipt.files.some((file) => file.kind === "original_image") && !receipt.files.some((file) => file.kind === "processed_image");
 
   return (
     <main className="list-screen">
@@ -648,6 +619,7 @@ function ReceiptList(props: { receipts: ReceiptRecord[]; onRefresh: () => void; 
           onChange={(value) => setStatus(value as ReceiptStatus | "all")}
           options={[
             { value: "all", label: "Visi" },
+            { value: "uploaded", label: "Augšupielādēts" },
             { value: "needs_review", label: "Jāpārbauda" },
             { value: "verified", label: "Verificēts" },
             { value: "failed", label: "Kļūda" }
@@ -660,7 +632,7 @@ function ReceiptList(props: { receipts: ReceiptRecord[]; onRefresh: () => void; 
         <div className="receipt-list">
           {filtered.map((receipt) => (
             <Card key={receipt.id}>
-              <div className="receipt-list-item">
+              <div className={`receipt-list-item ${canResume(receipt) ? "has-resume" : ""}`}>
                 <RowLink onClick={() => props.onOpen(receipt)}>
                   <div className="receipt-row">
                     <div>
@@ -673,6 +645,11 @@ function ReceiptList(props: { receipts: ReceiptRecord[]; onRefresh: () => void; 
                     </div>
                   </div>
                 </RowLink>
+                {canResume(receipt) ? (
+                  <button className="receipt-action-button" type="button" onClick={() => props.onResume(receipt)} aria-label="Apstrādāt čeku" title="Apstrādāt čeku">
+                    <WandSparkles aria-hidden="true" size={20} />
+                  </button>
+                ) : null}
                 <button className="receipt-delete-button" type="button" onClick={() => props.onDelete(receipt)} aria-label="Dzēst čeku" title="Dzēst čeku">
                   <Trash2 aria-hidden="true" size={20} />
                 </button>
@@ -688,7 +665,20 @@ function ReceiptList(props: { receipts: ReceiptRecord[]; onRefresh: () => void; 
   );
 }
 
-function ReceiptDetail(props: { receipt: ReceiptRecord; originalUrl: string; processedUrl: string; pdfUrl: string; onReview: () => void; onDelete: (receipt: ReceiptRecord) => void }) {
+function ReceiptDetail(props: {
+  receipt: ReceiptRecord;
+  originalUrl: string;
+  processedUrl: string;
+  pdfUrl: string;
+  onBack: () => void;
+  onRefresh: () => void;
+  onReview: () => void;
+  onResume: (receipt: ReceiptRecord) => void;
+  onDelete: (receipt: ReceiptRecord) => void;
+}) {
+  const canResume = props.receipt.files.some((file) => file.kind === "original_image") && !props.receipt.files.some((file) => file.kind === "processed_image");
+  const lastIssue = props.receipt.failureReason ?? props.receipt.validation?.issues[0]?.message ?? null;
+
   return (
     <main className="detail-screen">
       <header className="screen-header row-header">
@@ -697,10 +687,19 @@ function ReceiptDetail(props: { receipt: ReceiptRecord; originalUrl: string; pro
           <p>{props.receipt.receiptDate ?? "Datums nav drošs"} · {formatCents(props.receipt.grandTotalCents, props.receipt.currency ?? "EUR")}</p>
         </div>
         <div className="detail-actions">
+          <IconButton label="Atpakaļ" icon={ArrowLeft} onClick={props.onBack} />
+          <IconButton label="Atsvaidzināt" icon={RefreshCw} onClick={props.onRefresh} />
           <StatusPill status={props.receipt.status} />
+          {canResume ? <Button variant="secondary" icon={WandSparkles} onClick={() => props.onResume(props.receipt)}>Apstrādāt</Button> : null}
           <Button variant="danger" icon={Trash2} onClick={() => props.onDelete(props.receipt)}>Dzēst</Button>
         </div>
       </header>
+      {canResume ? (
+        <WarningBanner>
+          Šim čekam ir saglabāts oriģināls, bet nav pabeigta attēla apstrāde. Spied “Apstrādāt”, lai turpinātu no oriģinālā faila.
+        </WarningBanner>
+      ) : null}
+      {lastIssue ? <WarningBanner tone={props.receipt.status === "failed" ? "danger" : "warning"}>{lastIssue}</WarningBanner> : null}
       <div className="detail-grid">
         <ReceiptPreview src={props.originalUrl} title="Oriģināls" />
         <ReceiptPreview src={props.processedUrl} title="Apstrādāts attēls" />
