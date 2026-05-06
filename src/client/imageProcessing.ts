@@ -17,28 +17,6 @@ export async function fileToObjectUrl(file: Blob): Promise<string> {
   return URL.createObjectURL(file);
 }
 
-export async function captureVideoFrame(video: HTMLVideoElement): Promise<File> {
-  const canvas = document.createElement("canvas");
-  const rawWidth = video.videoWidth;
-  const rawHeight = video.videoHeight;
-  const display = video.getBoundingClientRect();
-  const touchDevice = navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches;
-  const shouldRotateToPortrait = touchDevice && display.height > display.width && rawWidth > rawHeight;
-  canvas.width = shouldRotateToPortrait ? rawHeight : rawWidth;
-  canvas.height = shouldRotateToPortrait ? rawWidth : rawHeight;
-  const context = canvas.getContext("2d", { alpha: false });
-  if (!context) throw new Error("Kameru neizdevās nolasīt.");
-  if (shouldRotateToPortrait) {
-    context.translate(canvas.width, 0);
-    context.rotate(Math.PI / 2);
-    context.drawImage(video, 0, 0, rawWidth, rawHeight);
-  } else {
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-  }
-  const blob = await canvasToBlob(canvas, "image/jpeg", 0.97);
-  return new File([blob], `receipt-${Date.now()}.jpg`, { type: "image/jpeg" });
-}
-
 export async function detectReceipt(file: Blob): Promise<DetectionResult> {
   const bitmap = await createImageBitmap(file);
   const maxSize = 900;

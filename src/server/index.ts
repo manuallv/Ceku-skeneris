@@ -79,7 +79,8 @@ async function bootstrap(): Promise<void> {
       ai: {
         provider: config.openAiApiKey ? config.aiProvider : "mock",
         configured: Boolean(config.openAiApiKey),
-        modelConfigured: Boolean(config.aiModel)
+        modelConfigured: Boolean(config.aiModel),
+        model: config.aiModel
       },
       storage: {
         localDirectoryConfigured: Boolean(config.localStorageDir),

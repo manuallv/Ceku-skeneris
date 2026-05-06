@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  Bug,
   Camera,
   Check,
   ClipboardList,
@@ -9,12 +10,13 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
+  Send,
   Settings,
   Trash2,
   Upload,
   WandSparkles
 } from "lucide-react";
-import { api, fileUrl } from "./api";
+import { api, fileUrl, type AiDebugResponse } from "./api";
 import {
   detectReceipt,
   fileToObjectUrl,
@@ -41,7 +43,7 @@ import {
 import { formatCents, parseMoneyToCents } from "../shared/money";
 import type { ImageQualityReport, ReceiptExtraction, ReceiptRecord, ReceiptStatus } from "../shared/receiptTypes";
 
-type View = "welcome" | "crop" | "review" | "list" | "detail" | "settings";
+type View = "welcome" | "crop" | "review" | "list" | "detail" | "settings" | "debug";
 
 const stages = ["Augšupielāde", "Attēla apstrāde", "PDF izveide", "Čeka nolasīšana", "Datu validācija", "Saglabāšana datubāzē"];
 
@@ -288,13 +290,14 @@ export default function App() {
           <div>
             <IconButton label="Skenēt čeku" icon={Camera} onClick={openCameraCapture} />
             <IconButton label="Saraksts" icon={ClipboardList} onClick={() => { setView("list"); void refreshReceipts(); }} />
+            <IconButton label="AI tests" icon={Bug} onClick={() => setView("debug")} />
             <IconButton label="Iestatījumi" icon={Settings} onClick={() => setView("settings")} />
           </div>
         </nav>
       ) : null}
 
       {view === "welcome" ? (
-        <WelcomeScreen onScan={openCameraCapture} onUpload={openGalleryPicker} />
+        <WelcomeScreen onScan={openCameraCapture} onUpload={openGalleryPicker} onDebug={() => setView("debug")} />
       ) : null}
       {view === "crop" && detection ? (
         <CropScreen
@@ -329,6 +332,7 @@ export default function App() {
         />
       ) : null}
       {view === "settings" ? <SettingsScreen /> : null}
+      {view === "debug" ? <AiDebugScreen /> : null}
     </div>
   );
 }
@@ -336,6 +340,7 @@ export default function App() {
 function WelcomeScreen(props: {
   onScan: () => void;
   onUpload: () => void;
+  onDebug: () => void;
 }) {
   return (
     <main className="welcome-screen">
@@ -348,6 +353,7 @@ function WelcomeScreen(props: {
         <div className="stack">
           <Button icon={Camera} full onClick={props.onScan}>Skenēt čeku</Button>
           <Button icon={Upload} variant="secondary" full onClick={props.onUpload}>Augšupielādēt no galerijas</Button>
+          <Button icon={Bug} variant="ghost" full onClick={props.onDebug}>AI tests</Button>
         </div>
       </Card>
     </main>
@@ -678,6 +684,7 @@ function ReceiptDetail(props: {
 }) {
   const canResume = props.receipt.files.some((file) => file.kind === "original_image") && !props.receipt.files.some((file) => file.kind === "processed_image");
   const lastIssue = props.receipt.failureReason ?? props.receipt.validation?.issues[0]?.message ?? null;
+  const rawAiFile = props.receipt.files.find((file) => file.kind === "raw_ai_response_json");
 
   return (
     <main className="detail-screen">
@@ -705,14 +712,10 @@ function ReceiptDetail(props: {
         <ReceiptPreview src={props.processedUrl} title="Apstrādāts attēls" />
       </div>
       {props.pdfUrl ? <a className="pdf-link" href={props.pdfUrl} target="_blank" rel="noreferrer">Atvērt PDF</a> : null}
-      <Card>
-        <h2>Validācija</h2>
-        <pre>{JSON.stringify(props.receipt.validation ?? {}, null, 2)}</pre>
-      </Card>
-      <Card>
-        <h2>Raw dati</h2>
-        <pre>{JSON.stringify(props.receipt.extraction ?? {}, null, 2)}</pre>
-      </Card>
+      <ReceiptSummary receipt={props.receipt} />
+      <JsonPanel title="Validācija" data={props.receipt.validation ?? {}} defaultOpen={Boolean(props.receipt.validation?.issues.length)} />
+      <JsonPanel title="Strukturētais AI JSON" data={props.receipt.extraction ?? {}} />
+      {rawAiFile ? <a className="pdf-link secondary-link" href={fileUrl(props.receipt.id, rawAiFile.id)} target="_blank" rel="noreferrer">Atvērt raw AI atbildi</a> : null}
       <Card>
         <h2>Audit log</h2>
         {props.receipt.auditLog.length === 0 ? <p className="muted">Nav ierakstu.</p> : null}
@@ -725,6 +728,149 @@ function ReceiptDetail(props: {
       </Card>
       <Button icon={ListFilter} onClick={props.onReview}>Labot</Button>
     </main>
+  );
+}
+
+function AiDebugScreen() {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [result, setResult] = useState<AiDebugResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function selectFile(nextFile: File | undefined) {
+    if (!nextFile) return;
+    setFile(nextFile);
+    setPreviewUrl(await fileToObjectUrl(nextFile));
+    setResult(null);
+    setError("");
+  }
+
+  async function runDebug() {
+    if (!file) return;
+    setLoading(true);
+    setError("");
+    try {
+      setResult(await api.debugAi(file));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "AI tests neizdevās.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="ai-debug-screen">
+      <header className="screen-header row-header">
+        <div>
+          <h1>AI tests</h1>
+          <p>Nosūti vienu bildi backend AI servisam un pārbaudi tieši to, ko modelis atgriež.</p>
+        </div>
+        <IconButton label="Atsvaidzināt" icon={RefreshCw} onClick={() => { setResult(null); setError(""); }} />
+      </header>
+      <div className="debug-layout">
+        <Card className="debug-upload-card">
+          <input
+            ref={inputRef}
+            hidden
+            type="file"
+            accept="image/jpeg,image/png"
+            onChange={(event) => {
+              void selectFile(event.currentTarget.files?.[0]);
+              event.currentTarget.value = "";
+            }}
+          />
+          <div className="debug-actions">
+            <Button icon={Upload} variant="secondary" onClick={() => inputRef.current?.click()}>Izvēlēties bildi</Button>
+            <Button icon={Send} onClick={runDebug} disabled={!file || loading}>{loading ? "Sūta..." : "Sūtīt AI"}</Button>
+          </div>
+          {file ? (
+            <div className="debug-file">
+              <strong>{file.name}</strong>
+              <span>{file.type || "image"} · {Math.round(file.size / 1024)} KB</span>
+            </div>
+          ) : (
+            <p className="muted">Izvēlies JPG vai PNG čeka bildi. Atslēga un modelis paliek tikai serverī.</p>
+          )}
+          {previewUrl ? <ReceiptPreview src={previewUrl} title="Nosūtāmā bilde" /> : null}
+        </Card>
+        <section className="debug-result">
+          {error ? <WarningBanner tone="danger">{error}</WarningBanner> : null}
+          {!result && !error ? <EmptyState title="AI atbilde vēl nav palaista" text="Te būs modelis, raw atbilde, strukturētais JSON un validācija." /> : null}
+          {result ? <AiDebugResultView result={result} /> : null}
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function AiDebugResultView({ result }: { result: AiDebugResponse }) {
+  const extraction = result.extraction;
+  const issues = result.validation?.issues ?? [];
+  return (
+    <div className="debug-result-stack">
+      <Card className="summary-card">
+        <div className="review-title">
+          <div>
+            <h2>{result.ok ? "AI atbilde saņemta" : "AI kļūda"}</h2>
+            <p>{result.provider} · {result.model} · {result.ms} ms</p>
+          </div>
+          <span className={`status-pill ${result.ok ? "status-verified" : "status-failed"}`}>{result.ok ? "OK" : "Kļūda"}</span>
+        </div>
+        {result.error ? <WarningBanner tone="danger">{result.error.message} ({result.error.code})</WarningBanner> : null}
+        {extraction ? (
+          <div className="summary-grid">
+            <SummaryTile label="Tirgotājs" value={extraction.merchant.merchant_display_name ?? extraction.merchant.legal_company_name ?? "nav atrasts"} />
+            <SummaryTile label="Datums" value={extraction.identity.date ?? "nav atrasts"} />
+            <SummaryTile label="Summa" value={extraction.totals.grand_total.raw ?? "nav atrasta"} />
+            <SummaryTile label="Pozīcijas" value={String(extraction.line_items.length)} />
+          </div>
+        ) : null}
+      </Card>
+      {issues.length ? (
+        <WarningBanner tone={issues.some((issue) => issue.severity === "critical") ? "danger" : "warning"}>
+          {issues.slice(0, 5).map((issue) => issue.message).join(" ")}
+        </WarningBanner>
+      ) : result.ok ? (
+        <WarningBanner tone="success">Lokālā validācija neatgrieza kritiskus brīdinājumus.</WarningBanner>
+      ) : null}
+      <JsonPanel title="Raw AI response" data={result.rawResponse ?? result.error ?? {}} defaultOpen={!result.ok} />
+      <JsonPanel title="Strukturētais JSON" data={result.extraction ?? {}} defaultOpen={result.ok} />
+      <JsonPanel title="Lokālā validācija" data={result.validation ?? {}} defaultOpen={Boolean(issues.length)} />
+    </div>
+  );
+}
+
+function ReceiptSummary({ receipt }: { receipt: ReceiptRecord }) {
+  return (
+    <Card className="summary-card">
+      <h2>Kopsavilkums</h2>
+      <div className="summary-grid">
+        <SummaryTile label="Statuss" value={receipt.status} />
+        <SummaryTile label="Tirgotājs" value={receipt.merchantDisplayName ?? "nav drošs"} />
+        <SummaryTile label="Datums" value={receipt.receiptDate ?? "nav drošs"} />
+        <SummaryTile label="Summa" value={formatCents(receipt.grandTotalCents, receipt.currency ?? "EUR")} />
+      </div>
+    </Card>
+  );
+}
+
+function SummaryTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="summary-tile">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function JsonPanel({ title, data, defaultOpen = false }: { title: string; data: unknown; defaultOpen?: boolean }) {
+  return (
+    <details className="json-panel" open={defaultOpen}>
+      <summary>{title}</summary>
+      <pre>{JSON.stringify(data, null, 2)}</pre>
+    </details>
   );
 }
 
@@ -743,9 +889,7 @@ function SettingsScreen() {
         <p>Konfigurācijas statuss bez slepenu vērtību rādīšanas.</p>
       </header>
       {error ? <WarningBanner tone="danger">{error}</WarningBanner> : null}
-      <Card>
-        <pre>{JSON.stringify(check ?? { loading: true }, null, 2)}</pre>
-      </Card>
+      <JsonPanel title="Sistēmas statuss" data={check ?? { loading: true }} defaultOpen />
     </main>
   );
 }

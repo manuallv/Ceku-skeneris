@@ -97,15 +97,19 @@ export function validateReceiptExtraction(extraction: ReceiptExtraction | null, 
   checks.aiConfidence = extraction.ai_confidence >= HIGH_CONFIDENCE;
   if (!checks.aiConfidence) fail("ai_low_confidence", "AI kopējā pārliecība ir par zemu.", "ai_confidence");
 
+  checks.aiWarningsClear = extraction.extraction_warnings.length === 0;
   for (const warning of extraction.extraction_warnings) {
     issues.push({ code: "ai_warning", severity: "warning", message: warning });
   }
 
+  let lineItemsCertain = true;
   for (const item of extraction.line_items) {
-    if (item.line_confidence < 0.65 || item.warnings.length > 0) {
+    if (item.line_confidence < HIGH_CONFIDENCE || item.warnings.length > 0) {
+      lineItemsCertain = false;
       fail("line_item_uncertain", `Pozīcija "${item.raw_line_text}" nav droša.`, "line_items", "warning");
     }
   }
+  checks.lineItemsCertain = lineItemsCertain;
 
   return finalize(issues, checks);
 }

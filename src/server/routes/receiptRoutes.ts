@@ -5,7 +5,7 @@ import { nanoid } from "nanoid";
 import { normalizeExtractedMoneyFields, validateReceiptExtraction } from "../../shared/receiptValidation.js";
 import type { ImageQualityReport, ReceiptExtraction, ReceiptRecord, ReceiptStatus } from "../../shared/receiptTypes.js";
 import { config } from "../config.js";
-import { AppError } from "../errors.js";
+import { AppError, isAppError } from "../errors.js";
 import { getActor } from "../security.js";
 import type { ReceiptExtractor } from "../ai/receiptExtractor.js";
 import type { ReceiptRepository } from "../repositories/receiptRepository.js";
@@ -73,6 +73,63 @@ export function createReceiptRouter(deps: {
       : await deps.repository.getReceipt(receipt.id);
 
     res.status(201).json({ receipt: updated });
+  });
+
+  router.post("/ai-debug", upload.single("file"), async (req, res) => {
+    const file = requireUpload(req.file);
+    validateImageUpload(file);
+    const started = Date.now();
+    const mimeType = normalizedMime(file.mimetype);
+
+    try {
+      const output = await deps.extractor.extract({
+        receiptId: `debug-${nanoid()}`,
+        imageBuffer: file.buffer,
+        mimeType,
+        originalImageBuffer: file.buffer,
+        originalMimeType: mimeType
+      });
+      const extraction = normalizeExtractedMoneyFields(output.extraction);
+      const validation = validateReceiptExtraction(extraction, {
+        processedImageExists: true,
+        generatedPdfExists: true,
+        duplicateSuspected: false,
+        imageQuality: null
+      });
+
+      res.json({
+        ok: true,
+        provider: output.provider,
+        model: modelFromRawResponse(output.rawResponse) ?? config.aiModel,
+        ms: Date.now() - started,
+        image: {
+          name: file.originalname || "receipt-image",
+          mimeType,
+          byteSize: file.size
+        },
+        extraction,
+        validation,
+        rawResponse: output.rawResponse
+      });
+    } catch (error) {
+      const appError = isAppError(error) ? error : new AppError(500, "ai_debug_failed", "AI diagnostika neizdevās.");
+      res.json({
+        ok: false,
+        provider: config.openAiApiKey ? config.aiProvider : "mock",
+        model: config.aiModel,
+        ms: Date.now() - started,
+        image: {
+          name: file.originalname || "receipt-image",
+          mimeType,
+          byteSize: file.size
+        },
+        error: {
+          code: appError.code,
+          message: safeErrorMessage(appError.expose ? appError.message : "Servera kļūda."),
+          statusCode: appError.statusCode
+        }
+      });
+    }
   });
 
   router.get("/:id", async (req, res) => {
@@ -298,6 +355,12 @@ function buildIdentityDuplicateHash(extraction: ReceiptExtraction): string | nul
   const total = extraction.totals.grand_total.cents;
   if (!merchant || !date || total == null) return null;
   return [merchant, date, time, number, total].filter(Boolean).join("|").toLowerCase();
+}
+
+function modelFromRawResponse(rawResponse: unknown): string | null {
+  if (!rawResponse || typeof rawResponse !== "object" || !("model" in rawResponse)) return null;
+  const model = (rawResponse as { model?: unknown }).model;
+  return typeof model === "string" ? model : null;
 }
 
 function safeErrorMessage(message: string): string {

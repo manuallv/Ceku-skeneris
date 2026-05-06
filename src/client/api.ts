@@ -1,4 +1,24 @@
-import type { ImageQualityReport, ReceiptExtraction, ReceiptRecord } from "../shared/receiptTypes";
+import type { ImageQualityReport, ReceiptExtraction, ReceiptRecord, ValidationResult } from "../shared/receiptTypes";
+
+export interface AiDebugResponse {
+  ok: boolean;
+  provider: string;
+  model: string;
+  ms: number;
+  image?: {
+    name: string;
+    mimeType: string;
+    byteSize: number;
+  };
+  extraction?: ReceiptExtraction;
+  validation?: ValidationResult;
+  rawResponse?: unknown;
+  error?: {
+    code: string;
+    message: string;
+    statusCode: number;
+  };
+}
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
@@ -28,6 +48,11 @@ export const api = {
     const form = new FormData();
     form.set("file", file);
     return request<{ receipt: ReceiptRecord }>("/api/receipts/upload", { method: "POST", body: form });
+  },
+  debugAi: (file: File) => {
+    const form = new FormData();
+    form.set("file", file);
+    return request<AiDebugResponse>("/api/receipts/ai-debug", { method: "POST", body: form });
   },
   processReceipt: (id: string, processedImage: Blob, imageQuality: ImageQualityReport, corners: unknown) => {
     const form = new FormData();

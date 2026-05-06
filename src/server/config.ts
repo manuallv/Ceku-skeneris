@@ -32,7 +32,7 @@ export const config = {
   allowAdditiveMigrations: toBoolean(process.env.ALLOW_ADDITIVE_MIGRATIONS, false),
   openAiApiKey: process.env.OPENAI_API_KEY ?? "",
   aiProvider: process.env.AI_PROVIDER ?? "openai",
-  aiModel: process.env.AI_MODEL ?? "gpt-4.1-mini"
+  aiModel: process.env.AI_MODEL ?? "gpt-5.5"
 };
 
 export type AppConfig = typeof config;

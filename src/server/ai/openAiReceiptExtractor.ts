@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { zodResponseFormat } from "openai/helpers/zod";
+import { zodTextFormat } from "openai/helpers/zod";
 import { normalizeExtractedMoneyFields } from "../../shared/receiptValidation.js";
 import type { ReceiptExtraction } from "../../shared/receiptTypes.js";
 import { config } from "../config.js";
@@ -25,19 +25,20 @@ export class OpenAiReceiptExtractor implements ReceiptExtractor {
         ? `data:${input.originalMimeType};base64,${input.originalImageBuffer.toString("base64")}`
         : null;
     const started = Date.now();
-    const completion = await this.client.chat.completions.parse({
+    const response = await this.client.responses.parse({
       model: config.aiModel,
-      response_format: zodResponseFormat(receiptExtractionSchema, "receipt_extraction"),
-      messages: [
+      instructions: strictReceiptSystemPrompt(),
+      reasoning: { effort: "low" },
+      text: {
+        format: zodTextFormat(receiptExtractionSchema, "receipt_extraction"),
+        verbosity: "low"
+      },
+      input: [
         {
-          role: "system",
-          content: strictReceiptSystemPrompt()
-        },
-        {
-          role: "user",
+          role: "user" as const,
           content: [
             {
-              type: "text",
+              type: "input_text" as const,
               text: [
                 "Extract the receipt data from these images.",
                 "Use the original camera photo for context and any text that the enhancement may have damaged.",
@@ -47,23 +48,26 @@ export class OpenAiReceiptExtractor implements ReceiptExtractor {
             },
             ...(originalDataUrl
               ? [{
-                  type: "image_url" as const,
-                  image_url: { url: originalDataUrl, detail: "high" as const }
+                  type: "input_image" as const,
+                  image_url: originalDataUrl,
+                  detail: "original" as const
                 }]
               : []),
             {
-              type: "image_url",
-              image_url: { url: processedDataUrl, detail: "high" }
+              type: "input_image" as const,
+              image_url: processedDataUrl,
+              detail: "high" as const
             }
           ]
         }
-      ]
+      ],
+      max_output_tokens: 9000
     }).catch((error: unknown) => {
       logger.warn({ err: summarizeOpenAiError(error), receiptId: input.receiptId, model: config.aiModel }, "receipt extraction request failed");
       throw openAiAppError(error);
     });
 
-    const parsed = completion.choices[0]?.message.parsed;
+    const parsed = response.output_parsed;
     if (!parsed) {
       throw new AppError(502, "ai_parse_failed", "AI neatgrieza derīgu strukturētu čeka JSON.");
     }
@@ -72,10 +76,13 @@ export class OpenAiReceiptExtractor implements ReceiptExtractor {
     return {
       extraction: normalizeExtractedMoneyFields(parsed as ReceiptExtraction),
       rawResponse: {
-        id: completion.id,
-        model: completion.model,
-        usage: completion.usage,
-        request_id: completion._request_id
+        id: response.id,
+        model: response.model,
+        status: response.status,
+        usage: response.usage,
+        request_id: response._request_id,
+        output_text: response.output_text,
+        parsed
       },
       provider: "openai"
     };

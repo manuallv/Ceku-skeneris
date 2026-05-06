@@ -93,6 +93,28 @@ describe("strict receipt validation", () => {
     expect(blurry.issues.some((issue) => issue.code === "image_quality_poor")).toBe(true);
   });
 
+  it("blocks auto verification when AI reports extraction warnings", () => {
+    const result = validateReceiptExtraction(validExtraction({ extraction_warnings: ["Daļa teksta ir neskaidra."] }), context);
+    expect(result.status).toBe("needs_review");
+    expect(result.canVerify).toBe(false);
+    expect(result.checks.aiWarningsClear).toBe(false);
+  });
+
+  it("blocks auto verification when any line item is uncertain", () => {
+    const extraction = validExtraction();
+    extraction.line_items[0] = {
+      ...extraction.line_items[0],
+      line_confidence: 0.8,
+      warnings: ["Pozīcijas nosaukums nav pilnībā salasāms."]
+    };
+
+    const result = validateReceiptExtraction(extraction, context);
+    expect(result.status).toBe("needs_review");
+    expect(result.canVerify).toBe(false);
+    expect(result.checks.lineItemsCertain).toBe(false);
+    expect(result.issues.some((issue) => issue.code === "line_item_uncertain")).toBe(true);
+  });
+
   it("handles malformed or missing AI extraction safely", () => {
     const result = validateReceiptExtraction(null, context);
     expect(result.status).toBe("needs_review");

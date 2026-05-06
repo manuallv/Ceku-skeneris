@@ -44,7 +44,7 @@ Required for production:
 
 - `PORT`: Hostinger-provided or configured app port
 - `OPENAI_API_KEY`: backend-only OpenAI key
-- `AI_MODEL`: image-capable model name; configurable for future replacement
+- `AI_MODEL`: image-capable model name; default `gpt-5.5`, configurable for future replacement
 - `DATABASE_URL` or `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
 - `LOCAL_STORAGE_DIR`: non-public upload storage directory. On Hostinger, prefer an absolute path or keep the default relative `storage`, which production resolves outside the deploy app folder.
 - `MAX_UPLOAD_BYTES`: upload limit, default 10 MB
@@ -106,13 +106,13 @@ Hostinger references:
 ## Receipt Flow
 
 1. User opens the PWA on iPhone Safari.
-2. User scans a receipt or uploads from gallery.
+2. User opens the native phone camera or uploads from gallery.
 3. Original image is saved unchanged.
 4. Browser detects receipt edges and shows draggable crop handles.
 5. Browser straightens and enhances the receipt image.
 6. Backend saves the processed image.
 7. Backend generates and saves a clean PDF.
-8. Backend sends the processed receipt image to the configured AI provider.
+8. Backend sends the original and processed receipt images to the configured AI provider.
 9. AI returns strict structured JSON.
 10. Backend normalizes money to integer cents.
 11. Validation decides `verified` or `needs_review`.
@@ -146,7 +146,7 @@ Validation checks include:
 - low confidence fields
 - impossible numeric values
 
-Any critical issue sets `needs_review`.
+Any critical issue sets `needs_review`. AI extraction warnings and uncertain line items also block automatic `verified` status, even when they are displayed as warnings rather than hard errors.
 
 ## File Storage
 
@@ -173,7 +173,15 @@ The provider interface allows future replacement with:
 - Google Document AI
 - other OCR/receipt providers
 
-The current provider uses strict structured output and instructs the model to return `null` plus warnings instead of guessing. The model name is configured by `AI_MODEL`.
+The current provider uses the OpenAI Responses API, strict structured output, and instructs the model to return `null` plus warnings instead of guessing. The model name is configured by `AI_MODEL`.
+
+The app also includes an `AI tests` screen. Upload one JPG/PNG image there to see:
+
+- configured provider and model
+- raw AI response metadata
+- parsed structured receipt JSON
+- strict local validation result
+- safe model/API error message when the request fails
 
 ## Design Notes
 

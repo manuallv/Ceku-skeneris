@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { AlertTriangle, CheckCircle2, ChevronRight, Loader2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, XCircle } from "lucide-react";
 import type { ReceiptStatus } from "../shared/receiptTypes";
 
 export function Button(props: {
@@ -92,36 +92,12 @@ export function WarningBanner({ children, tone = "warning" }: { children: ReactN
   );
 }
 
-export function ProgressStepper({ stages, active }: { stages: string[]; active: number }) {
-  return (
-    <ol className="progress-stepper" aria-label="Apstrādes progress">
-      {stages.map((stage, index) => (
-        <li key={stage} className={index < active ? "done" : index === active ? "active" : ""}>
-          <span className="progress-dot">{index === active ? <Loader2 size={14} /> : index + 1}</span>
-          <span>{stage}</span>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
 export function ReceiptPreview(props: { src?: string; title?: string; collapsible?: boolean }) {
   return (
     <figure className="receipt-preview">
       {props.title ? <figcaption>{props.title}</figcaption> : null}
       {props.src ? <img src={props.src} alt={props.title ?? "Čeka priekšskatījums"} /> : <SkeletonLoader label="Nav priekšskatījuma" />}
     </figure>
-  );
-}
-
-export function ScannerFrame() {
-  return (
-    <div className="scanner-frame" aria-hidden="true">
-      <span />
-      <span />
-      <span />
-      <span />
-    </div>
   );
 }
 
