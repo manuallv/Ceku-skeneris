@@ -74,7 +74,7 @@ export async function detectReceipt(file: Blob): Promise<DetectionResult> {
 
 export async function processReceiptImage(file: Blob, corners: Point[]): Promise<{ blob: Blob; dataUrl: string; quality: ImageQualityReport }> {
   const bitmap = await createImageBitmap(file);
-  const [tl, tr, br, bl] = corners;
+  const [tl, tr, br, bl] = expandCorners(corners, bitmap.width, bitmap.height);
   const targetWidth = Math.min(1800, Math.max(distance(tl, tr), distance(bl, br)));
   const targetHeight = Math.min(2600, Math.max(distance(tl, bl), distance(tr, br)));
   const width = Math.max(500, Math.round(targetWidth));
@@ -91,14 +91,19 @@ export async function processReceiptImage(file: Blob, corners: Point[]): Promise
   sourceContext.drawImage(bitmap, 0, 0);
   const source = sourceContext.getImageData(0, 0, bitmap.width, bitmap.height);
   const dest = destContext.createImageData(width, height);
+  const homography = computeHomography(
+    [
+      { x: 0, y: 0 },
+      { x: width - 1, y: 0 },
+      { x: width - 1, y: height - 1 },
+      { x: 0, y: height - 1 }
+    ],
+    [tl, tr, br, bl]
+  );
 
   for (let y = 0; y < height; y += 1) {
-    const v = y / (height - 1);
     for (let x = 0; x < width; x += 1) {
-      const u = x / (width - 1);
-      const top = lerpPoint(tl, tr, u);
-      const bottom = lerpPoint(bl, br, u);
-      const src = lerpPoint(top, bottom, v);
+      const src = homography ? applyHomography(homography, x, y) : bilinearMap([tl, tr, br, bl], x / (width - 1), y / (height - 1));
       sampleBilinear(source, src.x, src.y, dest, x, y);
     }
   }
@@ -377,6 +382,71 @@ function sampleBilinear(source: ImageData, x: number, y: number, dest: ImageData
     const p11 = source.data[(y1 * source.width + x1) * 4 + channel];
     dest.data[destIndex + channel] = p00 * (1 - wx) * (1 - wy) + p10 * wx * (1 - wy) + p01 * (1 - wx) * wy + p11 * wx * wy;
   }
+}
+
+function computeHomography(from: Point[], to: Point[]): number[] | null {
+  const matrix: number[][] = [];
+  const vector: number[] = [];
+  for (let index = 0; index < 4; index += 1) {
+    const source = from[index];
+    const target = to[index];
+    matrix.push([source.x, source.y, 1, 0, 0, 0, -source.x * target.x, -source.y * target.x]);
+    vector.push(target.x);
+    matrix.push([0, 0, 0, source.x, source.y, 1, -source.x * target.y, -source.y * target.y]);
+    vector.push(target.y);
+  }
+  const solved = solveLinearSystem(matrix, vector);
+  return solved ? [...solved, 1] : null;
+}
+
+function solveLinearSystem(matrix: number[][], vector: number[]): number[] | null {
+  const size = vector.length;
+  const augmented = matrix.map((row, index) => [...row, vector[index]]);
+  for (let column = 0; column < size; column += 1) {
+    let pivot = column;
+    for (let row = column + 1; row < size; row += 1) {
+      if (Math.abs(augmented[row][column]) > Math.abs(augmented[pivot][column])) pivot = row;
+    }
+    if (Math.abs(augmented[pivot][column]) < 1e-10) return null;
+    [augmented[column], augmented[pivot]] = [augmented[pivot], augmented[column]];
+
+    const divisor = augmented[column][column];
+    for (let item = column; item <= size; item += 1) augmented[column][item] /= divisor;
+
+    for (let row = 0; row < size; row += 1) {
+      if (row === column) continue;
+      const factor = augmented[row][column];
+      for (let item = column; item <= size; item += 1) {
+        augmented[row][item] -= factor * augmented[column][item];
+      }
+    }
+  }
+  return augmented.map((row) => row[size]);
+}
+
+function applyHomography(matrix: number[], x: number, y: number): Point {
+  const denominator = matrix[6] * x + matrix[7] * y + matrix[8];
+  if (Math.abs(denominator) < 1e-10) return { x, y };
+  return {
+    x: (matrix[0] * x + matrix[1] * y + matrix[2]) / denominator,
+    y: (matrix[3] * x + matrix[4] * y + matrix[5]) / denominator
+  };
+}
+
+function bilinearMap(corners: Point[], u: number, v: number): Point {
+  const [tl, tr, br, bl] = corners;
+  const top = lerpPoint(tl, tr, u);
+  const bottom = lerpPoint(bl, br, u);
+  return lerpPoint(top, bottom, v);
+}
+
+function expandCorners(corners: Point[], imageWidth: number, imageHeight: number): Point[] {
+  const center = corners.reduce((sum, point) => ({ x: sum.x + point.x / corners.length, y: sum.y + point.y / corners.length }), { x: 0, y: 0 });
+  const expansion = 0.018;
+  return corners.map((point) => ({
+    x: clamp(point.x + (point.x - center.x) * expansion, 0, imageWidth - 1),
+    y: clamp(point.y + (point.y - center.y) * expansion, 0, imageHeight - 1)
+  }));
 }
 
 function lerpPoint(a: Point, b: Point, t: number): Point {
