@@ -126,14 +126,20 @@ export function createReceiptRouter(deps: {
   router.post("/:id/extract", async (req, res) => {
     const receipt = await requireReceipt(deps.repository, String(req.params.id));
     const processed = receipt.files.find((file) => file.kind === "processed_image");
+    const original = receipt.files.find((file) => file.kind === "original_image");
     if (!processed) throw new AppError(409, "processed_image_missing", "Vispirms jāizveido apstrādātais attēls.");
 
     try {
-      const imageBuffer = await deps.storage.readBuffer(processed.storageKey);
+      const [imageBuffer, originalImageBuffer] = await Promise.all([
+        deps.storage.readBuffer(processed.storageKey),
+        original ? deps.storage.readBuffer(original.storageKey).catch(() => null) : Promise.resolve(null)
+      ]);
       const output = await deps.extractor.extract({
         receiptId: receipt.id,
         imageBuffer,
-        mimeType: processed.mimeType
+        mimeType: processed.mimeType,
+        originalImageBuffer: originalImageBuffer ?? undefined,
+        originalMimeType: original?.mimeType
       });
       const extraction = normalizeExtractedMoneyFields(output.extraction);
       const rawFile = await deps.storage.saveBuffer({

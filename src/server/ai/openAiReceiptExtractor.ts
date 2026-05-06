@@ -19,7 +19,11 @@ export class OpenAiReceiptExtractor implements ReceiptExtractor {
   }
 
   async extract(input: ReceiptExtractionInput): Promise<ReceiptExtractionOutput> {
-    const dataUrl = `data:${input.mimeType};base64,${input.imageBuffer.toString("base64")}`;
+    const processedDataUrl = `data:${input.mimeType};base64,${input.imageBuffer.toString("base64")}`;
+    const originalDataUrl =
+      input.originalImageBuffer && input.originalMimeType
+        ? `data:${input.originalMimeType};base64,${input.originalImageBuffer.toString("base64")}`
+        : null;
     const started = Date.now();
     const completion = await this.client.chat.completions.parse({
       model: config.aiModel,
@@ -34,11 +38,22 @@ export class OpenAiReceiptExtractor implements ReceiptExtractor {
           content: [
             {
               type: "text",
-              text: "Extract the receipt data from this image. Return only fields visible in the receipt image. Use null and warnings for anything uncertain."
+              text: [
+                "Extract the receipt data from these images.",
+                "Use the original camera photo for context and any text that the enhancement may have damaged.",
+                "Use the processed scan for straightened layout and contrast.",
+                "Return only fields visible in the receipt image. Use null and warnings for anything uncertain."
+              ].join(" ")
             },
+            ...(originalDataUrl
+              ? [{
+                  type: "image_url" as const,
+                  image_url: { url: originalDataUrl, detail: "high" as const }
+                }]
+              : []),
             {
               type: "image_url",
-              image_url: { url: dataUrl, detail: "high" }
+              image_url: { url: processedDataUrl, detail: "high" }
             }
           ]
         }

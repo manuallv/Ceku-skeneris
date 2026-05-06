@@ -48,6 +48,12 @@ type View = "welcome" | "scanner" | "crop" | "processing" | "review" | "list" | 
 
 const stages = ["Augšupielāde", "Attēla apstrāde", "PDF izveide", "Čeka nolasīšana", "Datu validācija", "Saglabāšana datubāzē"];
 
+interface BackgroundJob {
+  id: string;
+  stage: number;
+  startedAt: number;
+}
+
 export default function App() {
   const [view, setView] = useState<View>("welcome");
   const [receipts, setReceipts] = useState<ReceiptRecord[]>([]);
@@ -60,6 +66,7 @@ export default function App() {
   const [corners, setCorners] = useState<Point[]>([]);
   const [toast, setToast] = useState<{ message: string; tone?: "success" | "danger" } | null>(null);
   const [processingStage, setProcessingStage] = useState(0);
+  const [backgroundJobs, setBackgroundJobs] = useState<BackgroundJob[]>([]);
 
   useEffect(() => {
     void refreshReceipts();
@@ -111,37 +118,66 @@ export default function App() {
 
   async function continueProcessing() {
     if (!activeReceipt || !originalFile || !detection) return;
+    const jobInput = {
+      receipt: activeReceipt,
+      file: originalFile,
+      detection,
+      corners: [...corners],
+      processedBlob
+    };
+
+    setBackgroundJobs((jobs) => [...jobs.filter((job) => job.id !== activeReceipt.id), { id: activeReceipt.id, stage: 1, startedAt: Date.now() }]);
+    resetScanDraft();
+    setView("scanner");
+    showToast("Čeks apstrādājas fonā. Vari skenēt nākamo.");
+    void processReceiptInBackground(jobInput);
+  }
+
+  async function processReceiptInBackground(input: { receipt: ReceiptRecord; file: File; detection: DetectionResult; corners: Point[]; processedBlob: Blob | null }) {
     try {
-      setView("processing");
-      setProcessingStage(1);
-      let blob = processedBlob;
-      let quality = detection.quality;
+      updateBackgroundJob(input.receipt.id, 1);
+      let blob = input.processedBlob;
+      let quality = input.detection.quality;
       if (!blob) {
-        const processed = await processReceiptImage(originalFile, corners);
+        const processed = await processReceiptImage(input.file, input.corners);
         blob = processed.blob;
         quality = mergeQuality(quality, processed.quality);
-        setProcessedBlob(blob);
-        setProcessedUrl(processed.dataUrl);
       }
 
-      setProcessingStage(2);
-      const processed = await api.processReceipt(activeReceipt.id, blob, quality, corners);
-      setActiveReceipt(processed.receipt);
-      setProcessingStage(3);
-      const extracted = await api.extractReceipt(activeReceipt.id);
-      setProcessingStage(5);
-      setActiveReceipt(extracted.receipt);
-      setView("review");
+      updateBackgroundJob(input.receipt.id, 2);
+      const processed = await api.processReceipt(input.receipt.id, blob, quality, input.corners);
+      setActiveReceipt((current) => current?.id === input.receipt.id ? processed.receipt : current);
+      updateBackgroundJob(input.receipt.id, 3);
+      const extracted = await api.extractReceipt(input.receipt.id);
+      updateBackgroundJob(input.receipt.id, 5);
+      setActiveReceipt((current) => current?.id === input.receipt.id ? extracted.receipt : current);
       showToast(extracted.receipt.status === "verified" ? "Čeks verificēts." : "Čeks saglabāts kā jāpārbauda.");
       void refreshReceipts();
     } catch (error) {
-      setView("review");
       showError(error);
-      if (activeReceipt) {
-        const latest = await api.getReceipt(activeReceipt.id).catch(() => null);
-        if (latest) setActiveReceipt(latest.receipt);
+      const latest = await api.getReceipt(input.receipt.id).catch(() => null);
+      if (latest) {
+        setActiveReceipt((current) => current?.id === input.receipt.id ? latest.receipt : current);
       }
+      void refreshReceipts();
+    } finally {
+      setBackgroundJobs((jobs) => jobs.filter((job) => job.id !== input.receipt.id));
     }
+  }
+
+  function updateBackgroundJob(id: string, stage: number) {
+    setBackgroundJobs((jobs) => jobs.map((job) => job.id === id ? { ...job, stage } : job));
+  }
+
+  function resetScanDraft() {
+    setActiveReceipt(null);
+    setOriginalFile(null);
+    setOriginalUrl("");
+    setProcessedUrl("");
+    setProcessedBlob(null);
+    setDetection(null);
+    setCorners([]);
+    setProcessingStage(0);
   }
 
   function showToast(message: string) {
@@ -188,6 +224,7 @@ export default function App() {
   return (
     <div className="app-shell">
       {toast ? <Toast message={toast.message} tone={toast.tone} /> : null}
+      {backgroundJobs.length ? <BackgroundProcessingBadge jobs={backgroundJobs} /> : null}
       {uploadInput}
       {view !== "scanner" && view !== "crop" && view !== "processing" ? (
         <nav className="top-nav" aria-label="Galvenā navigācija">
@@ -453,6 +490,20 @@ function ProcessingScreen({ active }: { active: number }) {
         <ProgressStepper stages={stages} active={active} />
       </Card>
     </main>
+  );
+}
+
+function BackgroundProcessingBadge({ jobs }: { jobs: BackgroundJob[] }) {
+  const count = jobs.length;
+  const latestStage = Math.max(...jobs.map((job) => job.stage));
+  const stage = stages[clamp(latestStage, 0, stages.length - 1)] ?? stages[0];
+  const label = count === 1 ? "Apstrādājas 1 dokuments" : `Apstrādājas ${count} dokumenti`;
+
+  return (
+    <div className="background-jobs" role="status" aria-live="polite">
+      <span>{label}</span>
+      <small>{stage}</small>
+    </div>
   );
 }
 
