@@ -19,7 +19,6 @@ import {
   captureVideoFrame,
   detectReceipt,
   fileToObjectUrl,
-  percentToPoint,
   pointToPercent,
   processReceiptImage,
   type DetectionResult,
@@ -89,7 +88,7 @@ export default function App() {
       setProcessingStage(1);
       const detected = await detectReceipt(file);
       setDetection(detected);
-      setCorners(insetInitialCorners(detected.corners.map((point) => pointToPercent(point, detected.imageWidth, detected.imageHeight))));
+      setCorners(insetInitialCorners(detected.corners, detected.imageWidth, detected.imageHeight));
       setView("crop");
       void refreshReceipts();
     } catch (error) {
@@ -100,8 +99,7 @@ export default function App() {
   async function straightenReceipt() {
     if (!originalFile || !detection) return;
     try {
-      const actualCorners = corners.map((point) => percentToPoint(point, detection.imageWidth, detection.imageHeight));
-      const result = await processReceiptImage(originalFile, actualCorners);
+      const result = await processReceiptImage(originalFile, corners);
       setProcessedBlob(result.blob);
       setProcessedUrl(result.dataUrl);
       setDetection({ ...detection, quality: mergeQuality(detection.quality, result.quality) });
@@ -119,8 +117,7 @@ export default function App() {
       let blob = processedBlob;
       let quality = detection.quality;
       if (!blob) {
-        const actualCorners = corners.map((point) => percentToPoint(point, detection.imageWidth, detection.imageHeight));
-        const processed = await processReceiptImage(originalFile, actualCorners);
+        const processed = await processReceiptImage(originalFile, corners);
         blob = processed.blob;
         quality = mergeQuality(quality, processed.quality);
         setProcessedBlob(blob);
@@ -363,17 +360,21 @@ function CropScreen(props: {
   const [selectedCorner, setSelectedCorner] = useState<number | null>(null);
   const warnings = props.detection.quality.warnings;
 
-  function pointerToPercent(event: React.PointerEvent): Point | null {
+  function cornerToDisplayPercent(point: Point): Point {
+    return pointToPercent(point, props.detection.imageWidth, props.detection.imageHeight);
+  }
+
+  function pointerToImagePoint(event: React.PointerEvent): Point | null {
     const rect = imageRef.current?.getBoundingClientRect();
     if (!rect) return null;
     return {
-      x: clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100),
-      y: clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100)
+      x: clamp(((event.clientX - rect.left) / rect.width) * props.detection.imageWidth, 0, props.detection.imageWidth),
+      y: clamp(((event.clientY - rect.top) / rect.height) * props.detection.imageHeight, 0, props.detection.imageHeight)
     };
   }
 
   function beginCornerDrag(event: React.PointerEvent) {
-    const pointer = pointerToPercent(event);
+    const pointer = pointerToImagePoint(event);
     if (!pointer) return;
     const index = nearestCornerIndex(pointer, props.corners);
     const corner = props.corners[index];
@@ -390,12 +391,12 @@ function CropScreen(props: {
 
   function updateCorner(event: React.PointerEvent) {
     if (!dragState) return;
-    const pointer = pointerToPercent(event);
+    const pointer = pointerToImagePoint(event);
     if (!pointer) return;
     const next = [...props.corners];
     next[dragState.index] = {
-      x: clamp(pointer.x + dragState.offset.x, 0, 100),
-      y: clamp(pointer.y + dragState.offset.y, 0, 100)
+      x: clamp(pointer.x + dragState.offset.x, 0, props.detection.imageWidth),
+      y: clamp(pointer.y + dragState.offset.y, 0, props.detection.imageHeight)
     };
     props.setCorners(next);
   }
@@ -408,20 +409,28 @@ function CropScreen(props: {
       </header>
       {warnings.length ? <WarningBanner>{warnings.join(" ")}</WarningBanner> : null}
       <div className="crop-layout">
-        <div className="crop-canvas" onPointerDown={beginCornerDrag} onPointerMove={updateCorner} onPointerUp={() => setDragState(null)} onPointerCancel={() => setDragState(null)}>
-          <img ref={imageRef} src={props.imageUrl} alt="Uzņemtais čeks" />
-          <svg className="crop-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-            <polygon points={props.corners.map((point) => `${point.x},${point.y}`).join(" ")} />
-          </svg>
-          {props.corners.map((point, index) => (
-            <button
-              className={`corner-handle ${selectedCorner === index ? "active" : ""}`}
-              key={index}
-              style={{ left: `${point.x}%`, top: `${point.y}%` }}
-              type="button"
-              aria-label={`Stūris ${index + 1}`}
-            />
-          ))}
+        <div className="crop-canvas">
+          <div className="crop-image-stage" onPointerDown={beginCornerDrag} onPointerMove={updateCorner} onPointerUp={() => setDragState(null)} onPointerCancel={() => setDragState(null)}>
+            <img ref={imageRef} src={props.imageUrl} alt="Uzņemtais čeks" />
+            <svg className="crop-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <polygon points={props.corners.map((point) => {
+                const percent = cornerToDisplayPercent(point);
+                return `${percent.x},${percent.y}`;
+              }).join(" ")} />
+            </svg>
+            {props.corners.map((point, index) => {
+              const percent = cornerToDisplayPercent(point);
+              return (
+                <button
+                  className={`corner-handle ${selectedCorner === index ? "active" : ""}`}
+                  key={index}
+                  style={{ left: `${percent.x}%`, top: `${percent.y}%` }}
+                  type="button"
+                  aria-label={`Stūris ${index + 1}`}
+                />
+              );
+            })}
+          </div>
         </div>
         {props.processedUrl ? <ReceiptPreview src={props.processedUrl} title="Apstrādāts priekšskatījums" /> : null}
       </div>
@@ -724,11 +733,13 @@ function nearestCornerIndex(pointer: Point, corners: Point[]): number {
   return nearest;
 }
 
-function insetInitialCorners(corners: Point[]): Point[] {
-  const min = 7;
-  const max = 93;
+function insetInitialCorners(corners: Point[], width: number, height: number): Point[] {
+  const minX = width * 0.07;
+  const maxX = width * 0.93;
+  const minY = height * 0.07;
+  const maxY = height * 0.93;
   return corners.map((point) => ({
-    x: clamp(point.x, min, max),
-    y: clamp(point.y, min, max)
+    x: clamp(point.x, minX, maxX),
+    y: clamp(point.y, minY, maxY)
   }));
 }

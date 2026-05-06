@@ -478,17 +478,28 @@ video {
 
 .crop-canvas {
   position: relative;
+  display: grid;
+  place-items: center;
   overflow: hidden;
   border-radius: var(--radius-md);
   background: #0c0d10;
   border: 1px solid var(--line);
   box-shadow: var(--shadow-md);
+}
+
+.crop-image-stage {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  line-height: 0;
   touch-action: none;
 }
 
-.crop-canvas img {
+.crop-image-stage img {
   display: block;
-  width: 100%;
+  width: auto;
+  height: auto;
+  max-width: 100%;
   max-height: 68vh;
   object-fit: contain;
 }
