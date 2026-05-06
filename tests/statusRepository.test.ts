@@ -31,4 +31,15 @@ describe("receipt repository and status transitions", () => {
     const duplicate = await repository.findDuplicate({ duplicateHash: "hash-1", receiptId: "r4" });
     expect(duplicate?.id).toBe("r3");
   });
+
+  it("deletes old receipts from the local repository", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ceku-repo-"));
+    const repository = new LocalReceiptRepository(dir);
+    await repository.init();
+    await repository.createReceipt({ id: "r5", status: "uploaded", duplicateHash: null });
+
+    await expect(repository.deleteReceipt("r5")).resolves.toBe(true);
+    await expect(repository.getReceipt("r5")).resolves.toBeNull();
+    await expect(repository.deleteReceipt("r5")).resolves.toBe(false);
+  });
 });

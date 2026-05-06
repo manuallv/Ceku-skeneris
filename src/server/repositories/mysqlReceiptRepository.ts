@@ -1,4 +1,4 @@
-import mysql, { type Pool } from "mysql2/promise";
+import mysql, { type Pool, type ResultSetHeader } from "mysql2/promise";
 import { nanoid } from "nanoid";
 import type { ReceiptAuditEntry, ReceiptFileRecord, ReceiptRecord, ReceiptStatus } from "../../shared/receiptTypes.js";
 import { canTransitionReceiptStatus } from "../../shared/statusTransitions.js";
@@ -124,6 +124,25 @@ export class MySqlReceiptRepository implements ReceiptRepository {
       await this.insertValidationSnapshot(id, patch.validation);
     }
     return this.mustGet(id);
+  }
+
+  async deleteReceipt(id: string): Promise<boolean> {
+    const existing = await this.getReceipt(id);
+    if (!existing) return false;
+
+    const childTables = [
+      "receipt_extraction_raw",
+      "receipt_validation_results",
+      "receipt_vat_breakdown",
+      "receipt_line_items",
+      "receipt_audit_log",
+      "receipt_files"
+    ];
+    for (const table of childTables) {
+      await this.query(`DELETE FROM ${table} WHERE receipt_id = ?`, [id]);
+    }
+    const [result] = await this.query<ResultSetHeader>("DELETE FROM receipts WHERE id = ?", [id]);
+    return result.affectedRows > 0;
   }
 
   async addFile(receiptId: string, file: ReceiptFileRecord): Promise<ReceiptRecord> {

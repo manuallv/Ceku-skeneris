@@ -42,6 +42,7 @@ export const api = {
   verifyReceipt: (id: string) => request<{ receipt: ReceiptRecord }>(`/api/receipts/${id}/verify`, { method: "POST" }),
   markNeedsReview: (id: string, reason?: string) =>
     request<{ receipt: ReceiptRecord }>(`/api/receipts/${id}/needs-review`, { method: "POST", body: JSON.stringify({ reason }) }),
+  deleteReceipt: (id: string) => request<{ ok: boolean }>(`/api/receipts/${id}`, { method: "DELETE" }),
   voidReceipt: (id: string, reason?: string) =>
     request<{ receipt: ReceiptRecord }>(`/api/receipts/${id}/void`, { method: "POST", body: JSON.stringify({ reason }) })
 };

@@ -70,6 +70,22 @@ export class LocalFileStorage {
     }
   }
 
+  async deleteReceiptFiles(receiptId: string, storageKeys: string[]): Promise<void> {
+    await Promise.all(storageKeys.map(async (storageKey) => {
+      try {
+        await fs.rm(this.absolutePath(storageKey), { force: true });
+      } catch {
+        // File cleanup is best-effort; database deletion is the source of truth.
+      }
+    }));
+
+    try {
+      await fs.rm(this.absolutePath(receiptId), { force: true, recursive: true });
+    } catch {
+      // Ignore non-empty or already-missing receipt folders.
+    }
+  }
+
   async createReceiptPdf(input: {
     receiptId: string;
     processedImage: Buffer;

@@ -300,7 +300,8 @@ video {
 .scanner-screen video {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  background: #050506;
 }
 
 .scanner-frame {
@@ -762,6 +763,13 @@ video {
   gap: var(--space-3);
 }
 
+.receipt-list-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 46px;
+  gap: var(--space-3);
+  align-items: center;
+}
+
 .row-link {
   width: 100%;
   display: flex;
@@ -784,6 +792,21 @@ video {
 .receipt-row > div {
   display: grid;
   gap: var(--space-2);
+}
+
+.receipt-delete-button {
+  min-height: 46px;
+  width: 46px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--danger) 22%, var(--line));
+  border-radius: var(--radius-pill);
+}
+
+.receipt-delete-button:hover {
+  background: color-mix(in srgb, var(--danger) 16%, var(--surface));
 }
 
 .receipt-row span,
@@ -814,6 +837,14 @@ video {
 .detail-screen {
   display: grid;
   gap: var(--space-4);
+}
+
+.detail-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .pdf-link {

@@ -10,6 +10,7 @@ import {
   RotateCcw,
   Save,
   Settings,
+  Trash2,
   Upload,
   WandSparkles
 } from "lucide-react";
@@ -155,6 +156,23 @@ export default function App() {
     setToast({ message: error instanceof Error ? error.message : "Darbība neizdevās.", tone: "danger" });
   }
 
+  async function deleteReceipt(receipt: ReceiptRecord) {
+    const name = receipt.merchantDisplayName ?? "šo čeku";
+    if (!window.confirm(`Dzēst ${name}? Šo darbību nevarēs atsaukt.`)) return;
+    try {
+      await api.deleteReceipt(receipt.id);
+      setReceipts((items) => items.filter((item) => item.id !== receipt.id));
+      if (activeReceipt?.id === receipt.id) {
+        setActiveReceipt(null);
+        setView("list");
+      }
+      showToast("Čeks izdzēsts.");
+      void refreshReceipts();
+    } catch (error) {
+      showError(error);
+    }
+  }
+
   const uploadInput = (
     <input
       className="sr-only"
@@ -205,10 +223,10 @@ export default function App() {
         <ReviewScreen receipt={activeReceipt} processedUrl={processedUrl || (activeProcessedFile ? fileUrl(activeReceipt.id, activeProcessedFile.id) : "")} onReceipt={setActiveReceipt} onList={() => { setView("list"); void refreshReceipts(); }} />
       ) : null}
       {view === "list" ? (
-        <ReceiptList receipts={receipts} onRefresh={refreshReceipts} onOpen={(receipt) => { setActiveReceipt(receipt); setView("detail"); }} onScan={() => setView("scanner")} />
+        <ReceiptList receipts={receipts} onRefresh={refreshReceipts} onOpen={(receipt) => { setActiveReceipt(receipt); setView("detail"); }} onDelete={deleteReceipt} onScan={() => setView("scanner")} />
       ) : null}
       {view === "detail" && activeReceipt ? (
-        <ReceiptDetail receipt={activeReceipt} originalUrl={activeOriginalFile ? fileUrl(activeReceipt.id, activeOriginalFile.id) : ""} processedUrl={activeProcessedFile ? fileUrl(activeReceipt.id, activeProcessedFile.id) : ""} pdfUrl={activePdfFile ? fileUrl(activeReceipt.id, activePdfFile.id) : ""} onReview={() => setView("review")} />
+        <ReceiptDetail receipt={activeReceipt} originalUrl={activeOriginalFile ? fileUrl(activeReceipt.id, activeOriginalFile.id) : ""} processedUrl={activeProcessedFile ? fileUrl(activeReceipt.id, activeProcessedFile.id) : ""} pdfUrl={activePdfFile ? fileUrl(activeReceipt.id, activePdfFile.id) : ""} onReview={() => setView("review")} onDelete={deleteReceipt} />
       ) : null}
       {view === "settings" ? <SettingsScreen /> : null}
     </div>
@@ -543,7 +561,7 @@ function LineItemsEditor({ extraction, setExtraction }: { extraction: ReceiptExt
   );
 }
 
-function ReceiptList(props: { receipts: ReceiptRecord[]; onRefresh: () => void; onOpen: (receipt: ReceiptRecord) => void; onScan: () => void }) {
+function ReceiptList(props: { receipts: ReceiptRecord[]; onRefresh: () => void; onOpen: (receipt: ReceiptRecord) => void; onDelete: (receipt: ReceiptRecord) => void; onScan: () => void }) {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<ReceiptStatus | "all">("all");
   const filtered = useMemo(() => props.receipts.filter((receipt) => {
@@ -582,18 +600,23 @@ function ReceiptList(props: { receipts: ReceiptRecord[]; onRefresh: () => void; 
         <div className="receipt-list">
           {filtered.map((receipt) => (
             <Card key={receipt.id}>
-              <RowLink onClick={() => props.onOpen(receipt)}>
-                <div className="receipt-row">
-                  <div>
-                    <strong>{receipt.merchantDisplayName ?? "Nezināms tirgotājs"}</strong>
-                    <span>{receipt.receiptDate ?? "Datums nav drošs"}</span>
+              <div className="receipt-list-item">
+                <RowLink onClick={() => props.onOpen(receipt)}>
+                  <div className="receipt-row">
+                    <div>
+                      <strong>{receipt.merchantDisplayName ?? "Nezināms tirgotājs"}</strong>
+                      <span>{receipt.receiptDate ?? "Datums nav drošs"}</span>
+                    </div>
+                    <div>
+                      <StatusPill status={receipt.status} />
+                      <strong>{formatCents(receipt.grandTotalCents, receipt.currency ?? "EUR")}</strong>
+                    </div>
                   </div>
-                  <div>
-                    <StatusPill status={receipt.status} />
-                    <strong>{formatCents(receipt.grandTotalCents, receipt.currency ?? "EUR")}</strong>
-                  </div>
-                </div>
-              </RowLink>
+                </RowLink>
+                <button className="receipt-delete-button" type="button" onClick={() => props.onDelete(receipt)} aria-label="Dzēst čeku" title="Dzēst čeku">
+                  <Trash2 aria-hidden="true" size={20} />
+                </button>
+              </div>
             </Card>
           ))}
         </div>
@@ -605,7 +628,7 @@ function ReceiptList(props: { receipts: ReceiptRecord[]; onRefresh: () => void; 
   );
 }
 
-function ReceiptDetail(props: { receipt: ReceiptRecord; originalUrl: string; processedUrl: string; pdfUrl: string; onReview: () => void }) {
+function ReceiptDetail(props: { receipt: ReceiptRecord; originalUrl: string; processedUrl: string; pdfUrl: string; onReview: () => void; onDelete: (receipt: ReceiptRecord) => void }) {
   return (
     <main className="detail-screen">
       <header className="screen-header row-header">
@@ -613,7 +636,10 @@ function ReceiptDetail(props: { receipt: ReceiptRecord; originalUrl: string; pro
           <h1>{props.receipt.merchantDisplayName ?? "Čeka detaļas"}</h1>
           <p>{props.receipt.receiptDate ?? "Datums nav drošs"} · {formatCents(props.receipt.grandTotalCents, props.receipt.currency ?? "EUR")}</p>
         </div>
-        <StatusPill status={props.receipt.status} />
+        <div className="detail-actions">
+          <StatusPill status={props.receipt.status} />
+          <Button variant="danger" icon={Trash2} onClick={() => props.onDelete(props.receipt)}>Dzēst</Button>
+        </div>
       </header>
       <div className="detail-grid">
         <ReceiptPreview src={props.originalUrl} title="Oriģināls" />

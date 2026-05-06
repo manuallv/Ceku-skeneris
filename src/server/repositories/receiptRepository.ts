@@ -29,6 +29,7 @@ export interface ReceiptRepository {
   getReceipt(id: string): Promise<ReceiptRecord | null>;
   listReceipts(filters?: { q?: string; status?: string }): Promise<ReceiptRecord[]>;
   updateReceipt(id: string, patch: ReceiptPatchInput): Promise<ReceiptRecord>;
+  deleteReceipt(id: string): Promise<boolean>;
   addFile(receiptId: string, file: ReceiptFileRecord): Promise<ReceiptRecord>;
   addAudit(receiptId: string, entry: Omit<ReceiptAuditEntry, "id" | "receiptId" | "createdAt">): Promise<ReceiptRecord>;
   findDuplicate(input: { imageSha256?: string | null; duplicateHash?: string | null; receiptId?: string | null }): Promise<ReceiptRecord | null>;

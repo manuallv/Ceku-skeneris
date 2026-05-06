@@ -24,7 +24,7 @@ export async function captureVideoFrame(video: HTMLVideoElement): Promise<File> 
   const context = canvas.getContext("2d", { alpha: false });
   if (!context) throw new Error("Kameru neizdevās nolasīt.");
   context.drawImage(video, 0, 0, canvas.width, canvas.height);
-  const blob = await canvasToBlob(canvas, "image/jpeg", 0.92);
+  const blob = await canvasToBlob(canvas, "image/jpeg", 0.97);
   return new File([blob], `receipt-${Date.now()}.jpg`, { type: "image/jpeg" });
 }
 
@@ -75,10 +75,10 @@ export async function detectReceipt(file: Blob): Promise<DetectionResult> {
 export async function processReceiptImage(file: Blob, corners: Point[]): Promise<{ blob: Blob; dataUrl: string; quality: ImageQualityReport }> {
   const bitmap = await createImageBitmap(file);
   const [tl, tr, br, bl] = expandCorners(corners, bitmap.width, bitmap.height);
-  const targetWidth = Math.min(1800, Math.max(distance(tl, tr), distance(bl, br)));
-  const targetHeight = Math.min(2600, Math.max(distance(tl, bl), distance(tr, br)));
-  const width = Math.max(500, Math.round(targetWidth));
-  const height = Math.max(800, Math.round(targetHeight));
+  const targetWidth = Math.min(2480, Math.max(distance(tl, tr), distance(bl, br)));
+  const targetHeight = Math.min(3508, Math.max(distance(tl, bl), distance(tr, br)));
+  const width = Math.max(800, Math.round(targetWidth));
+  const height = Math.max(1100, Math.round(targetHeight));
   const sourceCanvas = document.createElement("canvas");
   sourceCanvas.width = bitmap.width;
   sourceCanvas.height = bitmap.height;

@@ -79,6 +79,13 @@ export function createReceiptRouter(deps: {
     res.json({ receipt: await requireReceipt(deps.repository, String(req.params.id)) });
   });
 
+  router.delete("/:id", async (req, res) => {
+    const receipt = await requireReceipt(deps.repository, String(req.params.id));
+    await deps.repository.deleteReceipt(receipt.id);
+    await deps.storage.deleteReceiptFiles(receipt.id, receipt.files.map((file) => file.storageKey));
+    res.json({ ok: true });
+  });
+
   router.post("/:id/process", upload.single("processedImage"), async (req, res) => {
     const receipt = await requireReceipt(deps.repository, String(req.params.id));
     const file = requireUpload(req.file);

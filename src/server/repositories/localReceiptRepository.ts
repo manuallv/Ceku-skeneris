@@ -83,6 +83,14 @@ export class LocalReceiptRepository implements ReceiptRepository {
     return structuredClone(receipt);
   }
 
+  async deleteReceipt(id: string): Promise<boolean> {
+    const index = this.state.receipts.findIndex((item) => item.id === id);
+    if (index === -1) return false;
+    this.state.receipts.splice(index, 1);
+    await this.flush();
+    return true;
+  }
+
   async addFile(receiptId: string, file: ReceiptRecord["files"][number]): Promise<ReceiptRecord> {
     const receipt = this.findOrThrow(receiptId);
     receipt.files = receipt.files.filter((existing) => existing.kind !== file.kind || existing.sha256 !== file.sha256);
