@@ -18,6 +18,12 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit"
   },
   "dependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^24.7.2",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.4",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
@@ -33,22 +39,16 @@
     "pino": "^10.0.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.10",
     "zod": "^4.1.12"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.3",
-    "@types/multer": "^2.0.0",
-    "@types/node": "^24.7.2",
-    "@types/react": "^19.1.16",
-    "@types/react-dom": "^19.1.9",
     "concurrently": "^9.2.1",
     "jsdom": "^27.0.0",
     "tsx": "^4.20.6",
-    "typescript": "^5.9.3",
-    "vite": "^7.1.10",
     "vitest": "^3.2.4"
   }
 }
