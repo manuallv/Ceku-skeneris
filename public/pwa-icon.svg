@@ -1,7 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Čeku skeneris">
-  <rect width="512" height="512" rx="112" fill="#f7f8fb"/>
-  <rect x="132" y="76" width="248" height="360" rx="32" fill="#ffffff" stroke="#c8d0dd" stroke-width="12"/>
-  <path d="M172 156h168M172 210h128M172 264h158M172 318h98" stroke="#293241" stroke-width="22" stroke-linecap="round"/>
-  <path d="M132 108 158 86l26 22 26-22 26 22 26-22 26 22 26-22 26 22 26-22 18 16" fill="none" stroke="#c8d0dd" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="348" cy="356" r="46" fill="#34c759"/>
+  <defs>
+    <linearGradient id="bg" x1="84" x2="428" y1="44" y2="468" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1d4ed8"/>
+      <stop offset="0.55" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <filter id="shadow" x="88" y="50" width="336" height="420" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="18" flood-color="#0f172a" flood-opacity="0.22" stdDeviation="18"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <path d="M152 80h160l54 54v296H152z" fill="#ffffff" filter="url(#shadow)"/>
+  <path d="M312 80v68h68" fill="#dbeafe"/>
+  <path d="M196 190h120M196 238h92M196 286h134M196 334h76" stroke="#111827" stroke-width="24" stroke-linecap="round"/>
+  <path d="M118 150V94h56M394 150V94h-56M118 362v56h56M394 362v56h-56" fill="none" stroke="#a7f3d0" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="352" cy="386" r="42" fill="#22c55e"/>
+  <path d="m332 386 14 14 30-34" fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

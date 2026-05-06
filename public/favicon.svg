@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Čeku skeneris">
+  <defs>
+    <linearGradient id="bg" x1="10" x2="54" y1="6" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1d4ed8"/>
+      <stop offset="0.56" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
+  <path d="M20 11h20l6 6v36H20z" fill="#fff" opacity="0.98"/>
+  <path d="M40 11v8h8" fill="#dbeafe"/>
+  <path d="M26 25h14M26 31h11M26 37h15M26 43h9" stroke="#111827" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M15 18v-6h6M49 18v-6h-6M15 46v6h6M49 46v6h-6" fill="none" stroke="#a7f3d0" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="44" cy="48" r="5.5" fill="#22c55e"/>
+</svg>
