@@ -63,11 +63,8 @@ export async function detectReceipt(file: Blob): Promise<DetectionResult> {
 
 export async function processReceiptImage(file: Blob, corners: Point[]): Promise<{ blob: Blob; dataUrl: string; quality: ImageQualityReport }> {
   const bitmap = await createImageBitmap(file);
-  const [tl, tr, br, bl] = expandCorners(corners, bitmap.width, bitmap.height);
-  const targetWidth = Math.min(2480, Math.max(distance(tl, tr), distance(bl, br)));
-  const targetHeight = Math.min(3508, Math.max(distance(tl, bl), distance(tr, br)));
-  const width = Math.max(800, Math.round(targetWidth));
-  const height = Math.max(1100, Math.round(targetHeight));
+  const [tl, tr, br, bl] = clampCorners(corners, bitmap.width, bitmap.height);
+  const { width, height } = calculateReceiptOutputSize([tl, tr, br, bl]);
   const sourceCanvas = document.createElement("canvas");
   sourceCanvas.width = bitmap.width;
   sourceCanvas.height = bitmap.height;
@@ -92,7 +89,9 @@ export async function processReceiptImage(file: Blob, corners: Point[]): Promise
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
-      const src = homography ? applyHomography(homography, x, y) : bilinearMap([tl, tr, br, bl], x / (width - 1), y / (height - 1));
+      const u = width > 1 ? x / (width - 1) : 0;
+      const v = height > 1 ? y / (height - 1) : 0;
+      const src = homography ? applyHomography(homography, x, y) : bilinearMap([tl, tr, br, bl], u, v);
       sampleBilinear(source, src.x, src.y, dest, x, y);
     }
   }
@@ -102,6 +101,19 @@ export async function processReceiptImage(file: Blob, corners: Point[]): Promise
   const quality = analyzeQuality(dest, width, height, 1);
   const blob = await canvasToBlob(destCanvas, "image/png");
   return { blob, dataUrl: destCanvas.toDataURL("image/png"), quality };
+}
+
+export function calculateReceiptOutputSize(corners: Point[]): { width: number; height: number } {
+  const [tl, tr, br, bl] = corners;
+  const top = distance(tl, tr);
+  const bottom = distance(bl, br);
+  const left = distance(tl, bl);
+  const right = distance(tr, br);
+
+  return {
+    width: Math.max(1, Math.round((top + bottom) / 2)),
+    height: Math.max(1, Math.round((left + right) / 2))
+  };
 }
 
 export function pointToPercent(point: Point, width: number, height: number): Point {
@@ -363,12 +375,10 @@ function bilinearMap(corners: Point[], u: number, v: number): Point {
   return lerpPoint(top, bottom, v);
 }
 
-function expandCorners(corners: Point[], imageWidth: number, imageHeight: number): Point[] {
-  const center = corners.reduce((sum, point) => ({ x: sum.x + point.x / corners.length, y: sum.y + point.y / corners.length }), { x: 0, y: 0 });
-  const expansion = 0.018;
+function clampCorners(corners: Point[], imageWidth: number, imageHeight: number): Point[] {
   return corners.map((point) => ({
-    x: clamp(point.x + (point.x - center.x) * expansion, 0, imageWidth - 1),
-    y: clamp(point.y + (point.y - center.y) * expansion, 0, imageHeight - 1)
+    x: clamp(point.x, 0, imageWidth - 1),
+    y: clamp(point.y, 0, imageHeight - 1)
   }));
 }
 

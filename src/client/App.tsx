@@ -60,8 +60,6 @@ export default function App() {
   const [activeReceipt, setActiveReceipt] = useState<ReceiptRecord | null>(null);
   const [originalFile, setOriginalFile] = useState<File | null>(null);
   const [originalUrl, setOriginalUrl] = useState<string>("");
-  const [processedUrl, setProcessedUrl] = useState<string>("");
-  const [processedBlob, setProcessedBlob] = useState<Blob | null>(null);
   const [detection, setDetection] = useState<DetectionResult | null>(null);
   const [corners, setCorners] = useState<Point[]>([]);
   const [toast, setToast] = useState<{ message: string; tone?: "success" | "danger" } | null>(null);
@@ -120,27 +118,13 @@ export default function App() {
     }
   }
 
-  async function straightenReceipt() {
-    if (!originalFile || !detection) return;
-    try {
-      const result = await processReceiptImage(originalFile, corners);
-      setProcessedBlob(result.blob);
-      setProcessedUrl(result.dataUrl);
-      setDetection({ ...detection, quality: mergeQuality(detection.quality, result.quality) });
-      showToast("Čeks iztaisnots un uzlabots.");
-    } catch (error) {
-      showError(error);
-    }
-  }
-
   async function continueProcessing() {
     if (!activeReceipt || !originalFile || !detection) return;
     const jobInput = {
       receipt: activeReceipt,
       file: originalFile,
       detection,
-      corners: [...corners],
-      processedBlob
+      corners: [...corners]
     };
 
     setBackgroundJobs((jobs) => [...jobs.filter((job) => job.id !== activeReceipt.id), { id: activeReceipt.id, stage: 1, startedAt: Date.now() }]);
@@ -151,19 +135,14 @@ export default function App() {
     void processReceiptInBackground(jobInput);
   }
 
-  async function processReceiptInBackground(input: { receipt: ReceiptRecord; file: File; detection: DetectionResult; corners: Point[]; processedBlob: Blob | null }) {
+  async function processReceiptInBackground(input: { receipt: ReceiptRecord; file: File; detection: DetectionResult; corners: Point[] }) {
     try {
       updateBackgroundJob(input.receipt.id, 1);
-      let blob = input.processedBlob;
-      let quality = input.detection.quality;
-      if (!blob) {
-        const processed = await processReceiptImage(input.file, input.corners);
-        blob = processed.blob;
-        quality = mergeQuality(quality, processed.quality);
-      }
+      const processedImage = await processReceiptImage(input.file, input.corners);
+      const quality = mergeQuality(input.detection.quality, processedImage.quality);
 
       updateBackgroundJob(input.receipt.id, 2);
-      const processed = await api.processReceipt(input.receipt.id, blob, quality, input.corners);
+      const processed = await api.processReceipt(input.receipt.id, processedImage.blob, quality, input.corners);
       setActiveReceipt((current) => current?.id === input.receipt.id ? processed.receipt : current);
       updateBackgroundJob(input.receipt.id, 3);
       const extracted = await api.extractReceipt(input.receipt.id);
@@ -191,8 +170,6 @@ export default function App() {
     setActiveReceipt(null);
     setOriginalFile(null);
     setOriginalUrl("");
-    setProcessedUrl("");
-    setProcessedBlob(null);
     setDetection(null);
     setCorners([]);
   }
@@ -239,8 +216,6 @@ export default function App() {
       setActiveReceipt(receipt);
       setOriginalFile(file);
       setOriginalUrl(await fileToObjectUrl(file));
-      setProcessedBlob(null);
-      setProcessedUrl("");
       const detected = await detectReceipt(file);
       setDetection(detected);
       setCorners(insetInitialCorners(detected.corners, detected.imageWidth, detected.imageHeight));
@@ -305,16 +280,14 @@ export default function App() {
           imageUrl={originalUrl}
           detection={detection}
           corners={corners}
-          processedUrl={processedUrl}
           setCorners={setCorners}
           onBack={() => { resetScanDraft(); setView("welcome"); }}
-          onStraighten={straightenReceipt}
           onRetake={openCameraCapture}
           onContinue={continueProcessing}
         />
       ) : null}
       {view === "review" && activeReceipt ? (
-        <ReviewScreen receipt={activeReceipt} processedUrl={processedUrl || (activeProcessedFile ? fileUrl(activeReceipt.id, activeProcessedFile.id) : "")} onReceipt={setActiveReceipt} onList={() => { setView("list"); void refreshReceipts(); }} />
+        <ReviewScreen receipt={activeReceipt} processedUrl={activeProcessedFile ? fileUrl(activeReceipt.id, activeProcessedFile.id) : ""} onReceipt={setActiveReceipt} onList={() => { setView("list"); void refreshReceipts(); }} />
       ) : null}
       {view === "list" ? (
         <ReceiptList receipts={receipts} onRefresh={refreshReceipts} onOpen={(receipt) => { setActiveReceipt(receipt); setView("detail"); }} onDelete={deleteReceipt} onScan={openCameraCapture} onResume={resumeReceiptFromOriginal} />
@@ -365,10 +338,8 @@ function CropScreen(props: {
   imageUrl: string;
   detection: DetectionResult;
   corners: Point[];
-  processedUrl: string;
   setCorners: (points: Point[]) => void;
   onBack: () => void;
-  onStraighten: () => void;
   onRetake: () => void;
   onContinue: () => void;
 }) {
@@ -422,8 +393,8 @@ function CropScreen(props: {
     <main className="crop-screen">
       <header className="screen-header row-header">
         <div>
-          <h1>Iztaisnot čeku</h1>
-          <p>Pārbaudi stūrus pirms nolasīšanas.</p>
+          <h1>Pārbaudi stūrus</h1>
+          <p>Iztaisnošana notiks automātiski, kad spiedīsi “Turpināt”.</p>
         </div>
         <IconButton label="Atpakaļ" icon={ArrowLeft} onClick={props.onBack} />
       </header>
@@ -452,11 +423,9 @@ function CropScreen(props: {
             })}
           </div>
         </div>
-        {props.processedUrl ? <ReceiptPreview src={props.processedUrl} title="Apstrādāts priekšskatījums" /> : null}
       </div>
       <div className="bottom-actions">
         <Button variant="secondary" icon={RotateCcw} onClick={props.onRetake}>Uzņemt vēlreiz</Button>
-        <Button variant="secondary" icon={WandSparkles} onClick={props.onStraighten}>Iztaisnot čeku</Button>
         <Button icon={Check} onClick={props.onContinue}>Turpināt</Button>
       </div>
     </main>

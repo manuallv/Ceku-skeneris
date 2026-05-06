@@ -109,7 +109,7 @@ Hostinger references:
 2. User opens the native phone camera or uploads from gallery.
 3. Original image is saved unchanged.
 4. Browser detects receipt edges and shows draggable crop handles.
-5. Browser straightens and enhances the receipt image.
+5. User adjusts the corners and taps `Turpināt`; the browser straightens/enhances the image using the selected crop's own pixel size and proportions without forcing an A4 shape or downscaling the crop.
 6. Backend saves the processed image.
 7. Backend generates and saves a clean PDF.
 8. Backend sends the original and processed receipt images to the configured AI provider.
