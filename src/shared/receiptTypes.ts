@@ -79,6 +79,7 @@ export interface ExtractedLineItem {
   raw_line_text: string;
   item_name: string | null;
   normalized_name: string | null;
+  accounting_description: string | null;
   quantity: string | number | null;
   unit: string | null;
   unit_price: MoneyValue;

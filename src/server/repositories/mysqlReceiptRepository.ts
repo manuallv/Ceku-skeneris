@@ -27,6 +27,7 @@ type ReceiptRow = {
 export class MySqlReceiptRepository implements ReceiptRepository {
   readonly kind = "mysql" as const;
   private pool: Pool | null = null;
+  private lineItemAccountingDescriptionColumn = false;
 
   async init(): Promise<void> {
     this.pool = config.databaseUrl
@@ -46,6 +47,7 @@ export class MySqlReceiptRepository implements ReceiptRepository {
     if (config.allowAdditiveMigrations) {
       await this.ensureAdditiveTables();
     }
+    this.lineItemAccountingDescriptionColumn = await this.hasColumn("receipt_line_items", "accounting_description");
   }
 
   async createReceipt(input: ReceiptCreateInput): Promise<ReceiptRecord> {
@@ -301,6 +303,7 @@ export class MySqlReceiptRepository implements ReceiptRepository {
         raw_line_text TEXT NOT NULL,
         item_name VARCHAR(512) NULL,
         normalized_name VARCHAR(512) NULL,
+        accounting_description TEXT NULL,
         quantity_raw VARCHAR(64) NULL,
         unit VARCHAR(64) NULL,
         unit_price_raw VARCHAR(64) NULL,
@@ -320,6 +323,7 @@ export class MySqlReceiptRepository implements ReceiptRepository {
         CONSTRAINT fk_receipt_line_items_receipt FOREIGN KEY (receipt_id) REFERENCES receipts(id)
       )
     `);
+    await this.ensureColumn("receipt_line_items", "accounting_description", "TEXT NULL", "normalized_name");
     await this.query(`
       CREATE TABLE IF NOT EXISTS receipt_vat_breakdown (
         id VARCHAR(36) PRIMARY KEY,
@@ -366,40 +370,80 @@ export class MySqlReceiptRepository implements ReceiptRepository {
     `);
   }
 
+  private async ensureColumn(tableName: string, columnName: string, definition: string, afterColumn?: string): Promise<void> {
+    if (await this.hasColumn(tableName, columnName)) return;
+    await this.query(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}${afterColumn ? ` AFTER ${afterColumn}` : ""}`);
+  }
+
+  private async hasColumn(tableName: string, columnName: string): Promise<boolean> {
+    const [rows] = await this.query<Array<{ count: number }>>(
+      `SELECT COUNT(*) AS count
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = ?
+         AND COLUMN_NAME = ?`,
+      [tableName, columnName]
+    );
+    return Number(rows[0]?.count ?? 0) > 0;
+  }
+
   private async replaceExtractionChildren(receiptId: string, extraction: ReceiptRecord["extraction"], validation: ReceiptRecord["validation"]): Promise<void> {
     if (!extraction) return;
     await this.query("DELETE FROM receipt_line_items WHERE receipt_id = ?", [receiptId]);
     await this.query("DELETE FROM receipt_vat_breakdown WHERE receipt_id = ?", [receiptId]);
 
     for (const [index, item] of extraction.line_items.entries()) {
+      const columns = [
+        "id",
+        "receipt_id",
+        "line_index",
+        "raw_line_text",
+        "item_name",
+        "normalized_name",
+        ...(this.lineItemAccountingDescriptionColumn ? ["accounting_description"] : []),
+        "quantity_raw",
+        "unit",
+        "unit_price_raw",
+        "unit_price_cents",
+        "discount_amount_raw",
+        "discount_amount_cents",
+        "discount_percent",
+        "vat_rate",
+        "line_total_raw",
+        "line_total_cents",
+        "item_code_barcode",
+        "category",
+        "confidence_json",
+        "warnings_json",
+        "created_at"
+      ];
+      const values = [
+        nanoid(),
+        receiptId,
+        index,
+        item.raw_line_text,
+        item.item_name,
+        item.normalized_name,
+        ...(this.lineItemAccountingDescriptionColumn ? [item.accounting_description] : []),
+        item.quantity == null ? null : String(item.quantity),
+        item.unit,
+        item.unit_price.raw,
+        item.unit_price.cents,
+        item.discount_amount.raw,
+        item.discount_amount.cents,
+        item.discount_percent == null ? null : String(item.discount_percent),
+        item.vat_rate == null ? null : String(item.vat_rate),
+        item.line_total.raw,
+        item.line_total.cents,
+        item.item_code_barcode,
+        item.category,
+        json(item.confidence_per_field),
+        json(item.warnings)
+      ];
+
       await this.query(
-        `INSERT INTO receipt_line_items
-          (id, receipt_id, line_index, raw_line_text, item_name, normalized_name, quantity_raw, unit,
-           unit_price_raw, unit_price_cents, discount_amount_raw, discount_amount_cents, discount_percent,
-           vat_rate, line_total_raw, line_total_cents, item_code_barcode, category, confidence_json, warnings_json, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [
-          nanoid(),
-          receiptId,
-          index,
-          item.raw_line_text,
-          item.item_name,
-          item.normalized_name,
-          item.quantity == null ? null : String(item.quantity),
-          item.unit,
-          item.unit_price.raw,
-          item.unit_price.cents,
-          item.discount_amount.raw,
-          item.discount_amount.cents,
-          item.discount_percent == null ? null : String(item.discount_percent),
-          item.vat_rate == null ? null : String(item.vat_rate),
-          item.line_total.raw,
-          item.line_total.cents,
-          item.item_code_barcode,
-          item.category,
-          json(item.confidence_per_field),
-          json(item.warnings)
-        ]
+        `INSERT INTO receipt_line_items (${columns.join(", ")}) VALUES (${values.map(() => "?").join(", ")}, NOW())`,
+        values
       );
     }
 

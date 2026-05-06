@@ -72,7 +72,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
   letter-spacing: 0;
 }
@@ -229,7 +230,8 @@ video {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   min-height: 46px;
   width: 100%;
   padding: 0 var(--space-3);
@@ -237,6 +239,13 @@ video {
   background: color-mix(in srgb, var(--surface) 88%, var(--bg));
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
+}
+
+.field textarea {
+  min-height: 86px;
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-3);
+  resize: vertical;
 }
 
 .stack {
@@ -466,6 +475,42 @@ video {
   gap: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px solid var(--line);
+}
+
+.line-item-description {
+  grid-column: 1 / -1;
+}
+
+.line-items-summary {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.line-summary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.line-summary-row div {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.line-summary-row span,
+.line-summary-row p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.line-summary-row strong,
+.line-summary-row b {
+  overflow-wrap: anywhere;
 }
 
 .receipt-preview {

@@ -46,11 +46,21 @@ export function Input(props: {
   type?: string;
   placeholder?: string;
   inputMode?: "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search";
+  className?: string;
 }) {
   return (
-    <label className="field">
+    <label className={`field ${props.className ?? ""}`}>
       <span>{props.label}</span>
       <input value={props.value} onChange={(event) => props.onChange(event.target.value)} type={props.type ?? "text"} placeholder={props.placeholder} inputMode={props.inputMode} />
+    </label>
+  );
+}
+
+export function TextArea(props: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; className?: string }) {
+  return (
+    <label className={`field ${props.className ?? ""}`}>
+      <span>{props.label}</span>
+      <textarea value={props.value} onChange={(event) => props.onChange(event.target.value)} placeholder={props.placeholder} rows={3} />
     </label>
   );
 }

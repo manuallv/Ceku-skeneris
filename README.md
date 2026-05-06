@@ -183,6 +183,8 @@ The app also includes an `AI tests` screen. Upload one JPG/PNG image there to se
 - strict local validation result
 - safe model/API error message when the request fails
 
+Each extracted line item keeps the printed item name unchanged and can also include `accounting_description`: a short Latvian AI explanation/translation of what was likely purchased, shown in the review/detail UI for easier bookkeeping. If MySQL additive migrations are enabled, this is also stored in `receipt_line_items.accounting_description`; it is always preserved in the main extraction JSON.
+
 ## Design Notes
 
 The UI is iPhone-first and Latvian by default. It is inspired by Apple Human Interface Guidelines principles: clarity, deference to content, depth, accessible controls, safe-area support, large touch targets, light/dark mode, and restrained visual styling. It does not copy Apple apps, Apple icons, logos, trademarks, or protected visual identity.

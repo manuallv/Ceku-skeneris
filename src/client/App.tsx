@@ -37,6 +37,7 @@ import {
   RowLink,
   Select,
   StatusPill,
+  TextArea,
   Toast,
   WarningBanner
 } from "./components";
@@ -584,6 +585,17 @@ function LineItemsEditor({ extraction, setExtraction }: { extraction: ReceiptExt
               setExtraction({ ...extraction, line_items });
             }}
           />
+          <TextArea
+            className="line-item-description"
+            label="AI skaidrojums grāmatvedībai"
+            value={item.accounting_description ?? ""}
+            placeholder="Piemēram: durvju rāmja paplatinājuma komplekts"
+            onChange={(value) => {
+              const line_items = [...extraction.line_items];
+              line_items[index] = { ...item, accounting_description: value || null };
+              setExtraction({ ...extraction, line_items });
+            }}
+          />
         </div>
       ))}
     </Card>
@@ -713,6 +725,7 @@ function ReceiptDetail(props: {
       </div>
       {props.pdfUrl ? <a className="pdf-link" href={props.pdfUrl} target="_blank" rel="noreferrer">Atvērt PDF</a> : null}
       <ReceiptSummary receipt={props.receipt} />
+      <LineItemsSummary receipt={props.receipt} />
       <JsonPanel title="Validācija" data={props.receipt.validation ?? {}} defaultOpen={Boolean(props.receipt.validation?.issues.length)} />
       <JsonPanel title="Strukturētais AI JSON" data={props.receipt.extraction ?? {}} />
       {rawAiFile ? <a className="pdf-link secondary-link" href={fileUrl(props.receipt.id, rawAiFile.id)} target="_blank" rel="noreferrer">Atvērt raw AI atbildi</a> : null}
@@ -852,6 +865,27 @@ function ReceiptSummary({ receipt }: { receipt: ReceiptRecord }) {
         <SummaryTile label="Datums" value={receipt.receiptDate ?? "nav drošs"} />
         <SummaryTile label="Summa" value={formatCents(receipt.grandTotalCents, receipt.currency ?? "EUR")} />
       </div>
+    </Card>
+  );
+}
+
+function LineItemsSummary({ receipt }: { receipt: ReceiptRecord }) {
+  const items = receipt.extraction?.line_items ?? [];
+  if (!items.length) return null;
+
+  return (
+    <Card className="line-items-summary">
+      <h2>Pozīcijas</h2>
+      {items.map((item, index) => (
+        <div className="line-summary-row" key={`${item.raw_line_text}-${index}`}>
+          <div>
+            <strong>{item.item_name ?? item.raw_line_text}</strong>
+            <span>{item.raw_line_text}</span>
+            {item.accounting_description ? <p>{item.accounting_description}</p> : null}
+          </div>
+          <b>{item.line_total.raw ?? formatCents(item.line_total.cents, item.line_total.currency ?? receipt.currency ?? "EUR")}</b>
+        </div>
+      ))}
     </Card>
   );
 }

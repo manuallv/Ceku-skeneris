@@ -126,6 +126,7 @@ function strictReceiptSystemPrompt(): string {
     "Line item extraction is mandatory: extract every visible printed item line.",
     "Preserve product names, Latvian characters, abbreviations, decimals, and raw printed text exactly where possible.",
     "Do not translate item names. Do not beautify merchant or item names.",
+    "For each line item, fill accounting_description with a short Latvian explanation or translation of what was likely purchased, based only on the visible printed line. Keep it useful for bookkeeping, but use null and a warning if the line is too uncertain.",
     "Money values must include raw printed strings and normalized integer cents where safely parseable.",
     "If a line is unclear, keep raw_line_text with low confidence instead of guessing.",
     "VAT, totals, payment and line-item math must be represented exactly as printed.",
