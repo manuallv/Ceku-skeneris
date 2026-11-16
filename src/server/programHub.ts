@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { request } from "node:https";
 import { pipeline } from "node:stream";
 import path from "node:path";
+import { registerProgramHubLogin } from "./programHubLogin.js";
 
 const hubHost = "srv1746493.hstgr.cloud";
 const scannerPath = "/ceku-skeneris/";
@@ -31,7 +32,7 @@ const forwardedRequestHeaders = ["range", "if-range", "if-none-match", "if-modif
 const forwardedResponseHeaders = [
   "accept-ranges", "cache-control", "content-disposition", "content-length", "content-range",
   "content-security-policy", "content-type", "etag", "expires", "last-modified", "referrer-policy",
-  "www-authenticate", "x-content-type-options"
+  "x-content-type-options"
 ] as const;
 
 export function registerProgramHub(app: Express, clientDir: string): void {
@@ -41,7 +42,31 @@ export function registerProgramHub(app: Express, clientDir: string): void {
   app.get(scannerPath, (_req, res) =>
     res.set("Cache-Control", "no-cache").sendFile(path.join(clientDir, "index.html")));
   app.get(/^\/programmas$/, (_req, res) => res.redirect(302, portalPath));
-  app.use("/programmas", proxyPortal);
+  const login = registerProgramHubLogin(app);
+  app.use("/programmas", (req, res) => {
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      res.set("Allow", "GET, HEAD").status(405).end();
+      return;
+    }
+
+    const upstreamPath = portalResource(req.path);
+    if (!upstreamPath) {
+      res.status(404).end();
+      return;
+    }
+
+    if (upstreamPath.startsWith("/releases/public/")) {
+      proxyPortal(req, res, upstreamPath);
+      return;
+    }
+
+    const authorization = login.upstreamAuthorization(req);
+    if (!authorization) {
+      login.requireLogin(res, upstreamPath === "/" || upstreamPath === "/index.html");
+      return;
+    }
+    proxyPortal(req, res, upstreamPath, authorization);
+  });
 }
 
 function portalResource(pathname: string): string | undefined {
@@ -71,27 +96,13 @@ function portalResource(pathname: string): string | undefined {
   }
 }
 
-function proxyPortal(req: Request, res: Response): void {
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    res.set("Allow", "GET, HEAD").status(405).end();
-    return;
-  }
-
-  const upstreamPath = portalResource(req.path);
-  if (!upstreamPath) {
-    res.status(404).end();
-    return;
-  }
-
+function proxyPortal(req: Request, res: Response, upstreamPath: string, authorization?: string): void {
   const headers: Record<string, string> = {};
   for (const name of forwardedRequestHeaders) {
     const value = req.get(name);
     if (value) headers[name] = value;
   }
-  const authorization = req.get("authorization");
-  if (authorization && authorization.length <= 4096 && /^Basic [a-z0-9+/]+=*$/i.test(authorization)) {
-    headers.authorization = authorization;
-  }
+  if (authorization) headers.authorization = authorization;
 
   const upstream = request({
     hostname: hubHost,
@@ -101,6 +112,11 @@ function proxyPortal(req: Request, res: Response): void {
     headers,
     timeout: 30_000
   }, (response) => {
+    if (response.statusCode === 401) {
+      response.resume();
+      res.status(502).type("text").send("Programmu centrs pašlaik nav sasniedzams.");
+      return;
+    }
     res.status(response.statusCode ?? 502);
     for (const name of forwardedResponseHeaders) {
       const value = response.headers[name];

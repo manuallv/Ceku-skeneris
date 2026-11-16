@@ -3,6 +3,7 @@ node_modules/
 dist/
 .env
 .env.*
+/.program-hub-auth.json
 env
 env.*
 !.env.example

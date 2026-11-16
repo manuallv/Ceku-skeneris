@@ -107,7 +107,9 @@ Hostinger references:
 
 Opening `app.untitled.lv` in a browser takes you to the UNT program portal at `/programmas/`. Čeku skeneris opens at `/ceku-skeneris/`. Existing home-screen installations that still launch the original root URL are sent to the scanner by the standalone launch page. Receipt API and file routes keep their original URLs.
 
-The Node app streams the portal and its release files from the UNT VPS. The VPS continues to authenticate the private catalog and downloads. Changes to the bridge use the same Hostinger build and startup commands.
+The Node app streams the portal and its release files from the UNT VPS. The branded portal has a password-only login, with a signed session cookie scoped to `/programmas/`. The bridge authenticates to the VPS on the server side.
+
+Store the login settings in `.program-hub-auth.json` in the deployed Node application root, with permissions `0600`. The file contains a hex-encoded 16-byte `salt`, a hex-encoded 32-byte scrypt `passwordHash` derived with the salt bytes, a separate random hex-encoded 32-byte `sessionKey`, and the `upstreamAuthorization` Basic header for the VPS. Restart the Node app after replacing the file. Without valid settings, the private portal is unavailable while the scanner and public releases continue to operate.
 
 ## Receipt Flow
 
