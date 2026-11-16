@@ -7,6 +7,8 @@ import { registerProgramHubLogin } from "./programHubLogin.js";
 const hubHost = "srv1746493.hstgr.cloud";
 const scannerPath = "/ceku-skeneris/";
 const portalPath = "/programmas/";
+const looperOpenPath = "/devices/io-loop/open";
+const looperAccessUrl = /^https:\/\/srv1746493\.hstgr\.cloud:8443\/_access\?ticket=[A-Za-z0-9_-]{43}$/;
 const launchPage = `<!doctype html>
 <html lang="lv">
   <head>
@@ -44,8 +46,9 @@ export function registerProgramHub(app: Express, clientDir: string): void {
   app.get(/^\/programmas$/, (_req, res) => res.redirect(302, portalPath));
   const login = registerProgramHubLogin(app);
   app.use("/programmas", (req, res) => {
-    if (req.method !== "GET" && req.method !== "HEAD") {
-      res.set("Allow", "GET, HEAD").status(405).end();
+    const allowHead = req.path !== looperOpenPath;
+    if (req.method !== "GET" && !(allowHead && req.method === "HEAD")) {
+      res.set("Allow", allowHead ? "GET, HEAD" : "GET").status(405).end();
       return;
     }
 
@@ -54,7 +57,6 @@ export function registerProgramHub(app: Express, clientDir: string): void {
       res.status(404).end();
       return;
     }
-
     if (upstreamPath.startsWith("/releases/public/")) {
       proxyPortal(req, res, upstreamPath);
       return;
@@ -70,7 +72,9 @@ export function registerProgramHub(app: Express, clientDir: string): void {
 }
 
 function portalResource(pathname: string): string | undefined {
-  if (staticPaths.has(pathname)) return pathname;
+  if (staticPaths.has(pathname) || pathname === "/devices/io-loop/status" || pathname === looperOpenPath) {
+    return pathname;
+  }
 
   const release = /^\/releases\/(public|private)\/(.*)$/.exec(pathname);
   if (!release) return undefined;
@@ -112,12 +116,24 @@ function proxyPortal(req: Request, res: Response, upstreamPath: string, authoriz
     headers,
     timeout: 30_000
   }, (response) => {
+    const status = response.statusCode ?? 502;
+    if (upstreamPath === looperOpenPath && status >= 300 && status < 400) {
+      response.resume();
+      const location = response.headers.location;
+      res.set({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
+      if (status === 303 && location && looperAccessUrl.test(location)) {
+        res.status(303).set("Location", location).end();
+      } else {
+        res.status(502).type("text").send("IO LOOP attālināto paneli pašlaik nevar atvērt.");
+      }
+      return;
+    }
     if (response.statusCode === 401) {
       response.resume();
       res.status(502).type("text").send("Programmu centrs pašlaik nav sasniedzams.");
       return;
     }
-    res.status(response.statusCode ?? 502);
+    res.status(status);
     for (const name of forwardedResponseHeaders) {
       const value = response.headers[name];
       if (value !== undefined) res.setHeader(name, value);
