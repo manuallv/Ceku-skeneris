@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 const portalPath = "/programmas/";
 const cookieName = "__Secure-unt_programmas";
 const sessionDurationMs = 14 * 24 * 60 * 60 * 1000;
-const allowedTabs = new Set(["#programmas", "#lejupielades", "#ierices", "#izlaidumi"]);
+const allowedTabs = new Set(["#programmas", "#lejupielades", "#ierices", "#izlaidumi", "#favoriti", "#serveris"]);
 const derivePassword = promisify(scrypt);
 
 type LoginSettings = {
@@ -50,7 +50,7 @@ function hasSession(req: Request, key: string): boolean {
 }
 
 function selectedTab(tab: unknown): string {
-  return typeof tab === "string" && allowedTabs.has(tab) ? tab : "";
+  return typeof tab === "string" && (allowedTabs.has(tab) || /^#programma\/[a-z0-9][a-z0-9-]{0,62}$/.test(tab)) ? tab : "";
 }
 
 function showLogin(res: Response, status = 200, message = "", tab = ""): void {

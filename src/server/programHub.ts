@@ -30,6 +30,8 @@ const launchScript = `
 `;
 
 const staticPaths = new Set(["/", "/index.html", "/styles.css", "/app.js", "/catalog.js"]);
+const portalApiReads = new Set(["/portal/status", "/portal/state", "/portal/devices"]);
+const deviceControlPath = /^\/portal\/devices\/[a-z0-9][a-z0-9-]{0,62}\/control$/;
 const forwardedRequestHeaders = ["range", "if-range", "if-none-match", "if-modified-since"] as const;
 const forwardedResponseHeaders = [
   "accept-ranges", "cache-control", "content-disposition", "content-length", "content-range",
@@ -46,17 +48,52 @@ export function registerProgramHub(app: Express, clientDir: string): void {
   app.get(/^\/programmas$/, (_req, res) => res.redirect(302, portalPath));
   const login = registerProgramHubLogin(app);
   app.use("/programmas", (req, res) => {
+    const upstreamPath = portalResource(req.path);
+    if (!upstreamPath) {
+      res.status(404).end();
+      return;
+    }
+
+    if (upstreamPath.startsWith("/portal/")) {
+      const writeMethod = upstreamPath === "/portal/state" ? "PUT" : deviceControlPath.test(upstreamPath) ? "POST" : undefined;
+      const reading = req.method === "GET" && portalApiReads.has(upstreamPath);
+      if (!reading && req.method !== writeMethod) {
+        res.status(405).end();
+        return;
+      }
+      const authorization = login.upstreamAuthorization(req);
+      if (!authorization) {
+        login.requireLogin(res, false);
+        return;
+      }
+      if (reading) {
+        proxyPortal(req, res, upstreamPath, authorization);
+        return;
+      }
+      const origin = req.get("origin");
+      if (origin && origin !== "https://app.untitled.lv") {
+        res.status(403).end();
+        return;
+      }
+      if (!req.is("application/json") || !req.body || Array.isArray(req.body) || typeof req.body !== "object") {
+        res.status(400).json({ error: "Nederīgs pieprasījums." });
+        return;
+      }
+      const body = JSON.stringify(req.body);
+      if (Buffer.byteLength(body) > 512 * 1024) {
+        res.status(413).json({ error: "Pieprasījums ir par lielu." });
+        return;
+      }
+      proxyPortal(req, res, upstreamPath, authorization, body);
+      return;
+    }
+
     const allowHead = req.path !== looperOpenPath;
     if (req.method !== "GET" && !(allowHead && req.method === "HEAD")) {
       res.set("Allow", allowHead ? "GET, HEAD" : "GET").status(405).end();
       return;
     }
 
-    const upstreamPath = portalResource(req.path);
-    if (!upstreamPath) {
-      res.status(404).end();
-      return;
-    }
     if (upstreamPath.startsWith("/releases/public/")) {
       proxyPortal(req, res, upstreamPath);
       return;
@@ -72,7 +109,9 @@ export function registerProgramHub(app: Express, clientDir: string): void {
 }
 
 function portalResource(pathname: string): string | undefined {
-  if (staticPaths.has(pathname) || pathname === "/devices/io-loop/status" || pathname === looperOpenPath) {
+  if (staticPaths.has(pathname) || /^\/previews\/[a-z0-9][a-z0-9-]{0,62}\.webp$/.test(pathname) ||
+      portalApiReads.has(pathname) || deviceControlPath.test(pathname) ||
+      pathname === "/devices/io-loop/status" || pathname === looperOpenPath) {
     return pathname;
   }
 
@@ -100,13 +139,17 @@ function portalResource(pathname: string): string | undefined {
   }
 }
 
-function proxyPortal(req: Request, res: Response, upstreamPath: string, authorization?: string): void {
+function proxyPortal(req: Request, res: Response, upstreamPath: string, authorization?: string, body?: string): void {
   const headers: Record<string, string> = {};
   for (const name of forwardedRequestHeaders) {
     const value = req.get(name);
     if (value) headers[name] = value;
   }
   if (authorization) headers.authorization = authorization;
+  if (body !== undefined) {
+    headers["content-type"] = "application/json";
+    headers["content-length"] = String(Buffer.byteLength(body));
+  }
 
   const upstream = request({
     hostname: hubHost,
@@ -150,5 +193,5 @@ function proxyPortal(req: Request, res: Response, upstreamPath: string, authoriz
     if (res.headersSent) res.destroy();
     else res.status(502).type("text").send("Programmu centrs pašlaik nav sasniedzams.");
   });
-  upstream.end();
+  upstream.end(body);
 }
