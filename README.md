@@ -103,6 +103,12 @@ Hostinger references:
 - [Node.js Web App deployment](https://www.hostinger.com/support/how-to-deploy-a-nodejs-website-in-hostinger/)
 - [Environment variables](https://www.hostinger.com/support/how-to-add-environment-variables-during-node-js-application-deployment/)
 
+## Production entry points
+
+Opening `app.untitled.lv` in a browser takes you to the UNT program portal at `/programmas/`. Čeku skeneris opens at `/ceku-skeneris/`. Existing home-screen installations that still launch the original root URL are sent to the scanner by the standalone launch page. Receipt API and file routes keep their original URLs.
+
+The Node app streams the portal and its release files from the UNT VPS. The VPS continues to authenticate the private catalog and downloads. Changes to the bridge use the same Hostinger build and startup commands.
+
 ## Receipt Flow
 
 1. User opens the PWA on iPhone Safari.

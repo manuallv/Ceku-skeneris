@@ -11,6 +11,7 @@ import { createReceiptExtractor } from "./ai/createReceiptExtractor.js";
 import { createReceiptRepository } from "./repositories/createRepository.js";
 import { LocalFileStorage } from "./storage/localStorage.js";
 import { createReceiptRouter } from "./routes/receiptRoutes.js";
+import { registerProgramHub } from "./programHub.js";
 
 void bootstrap().catch((error) => {
   logger.error({ err: error }, "server bootstrap failed");
@@ -110,6 +111,7 @@ async function bootstrap(): Promise<void> {
 
   const clientDir = path.resolve(process.cwd(), "dist/client");
   if (fs.existsSync(clientDir)) {
+    if (config.isProduction) registerProgramHub(app, clientDir);
     app.use(express.static(clientDir, {
       extensions: ["html"],
       maxAge: config.isProduction ? "1h" : 0
